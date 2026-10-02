@@ -1,0 +1,70 @@
+.{
+    // The package id and the name a dependent writes in its dependency map.
+    .name = .blake3,
+    // Upstream's own version string, read out of c/blake3.h:33
+    // (`#define BLAKE3_VERSION_STRING "1.8.7"`) and out of
+    // c/CMakeLists.txt:13 (`project(libblake3 VERSION 1.8.7 ...)`). This is
+    // the version of the C library this package builds, not a version of the
+    // wrapper.
+    .version = "1.8.7",
+    // Reported by the Zig 0.16.0 compiler for this package; the receipt
+    // belongs in FORK-NOTES.md, which this fork's provenance owner writes
+    // from the observed `zig init` output. It identifies this fork and is not
+    // derived from any upstream Zig package, because there is no upstream Zig
+    // package to be a fork of.
+    .fingerprint = 0xc87edfed757d5a57, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.16.0",
+    // Nothing is fetched: the C library is this repository's own source and
+    // the facade, tests and example import only what is compiled here.
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        // The cross-test harness profile for this package. It is a file in
+        // the package because it is how this package declares what its
+        // cross-platform gate is: `cross-test` discovers it by name from the
+        // package root, and it is settings only - the standard `zig build
+        // test` step over the full published platform matrix, no target
+        // subset and no host path. Nothing in build.zig reads it.
+        "cross-test.profile.sh",
+        // zig/root.zig is the facade and zig/translate.h the one translated
+        // header. Both travel because a dependent reaches them through
+        // dep.module("blake3").
+        "zig",
+        // The upstream C library, unmodified: the three core sources, the
+        // public header, blake3_impl.h and every SIMD kernel this build can
+        // select. The whole directory travels rather than a hand-picked file
+        // list so that the tree a dependent receives is upstream's tree. The
+        // Rust crate (src/, b3sum/, build.rs) is not part of this package and
+        // nothing in it is needed by anything here.
+        "c",
+        "tests.zig",
+        "smoke.zig",
+        // Upstream's official test vectors, read by tests.zig through
+        // @embedFile("test_vectors/test_vectors.json"). Only the JSON file is
+        // listed; the Rust harness beside it is not used.
+        "test_vectors/test_vectors.json",
+        // The separate consumer package: proof that the published module
+        // resolves from a package that did not write it, through a relative
+        // path rather than a fetch.
+        "consumer",
+        // Upstream's three licence texts, which cover the whole work: "This
+        // work is released into the public domain with CC0 1.0. Alternatively,
+        // it is licensed under any of the following: Apache 2.0, Apache 2.0
+        // with LLVM exceptions" (README.md:191-197). A private repository
+        // removes no licence obligation, so all three ship with the package.
+        "LICENSE_A2",
+        "LICENSE_A2LLVM",
+        "LICENSE_CC0",
+        "README.md",
+        "UPSTREAM.md",
+        "UPSTREAM.sha256",
+        "README.zig.md",
+        "NOTICE.md",
+        "CHANGELOG.md",
+        "FORK-NOTES.md",
+        // .zig-cache/, zig-out/, zig-pkg/ and consumer/.zig-cache/ are
+        // deliberately absent: build outputs and fetched packages are not
+        // part of a package. See .gitignore.
+    },
+}
