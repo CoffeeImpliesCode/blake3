@@ -36,6 +36,18 @@
 # Top-level code is limited to variable definitions because the harness sources
 # this file more than once per run and expects it to be idempotent.
 
+# Linkage.  This profile chooses none: the harness owns `-Dtarget`, and no
+# `-D` option appears below, so every one of the 53 platforms is built through
+# the package's default `static` graph — the artifact this SDK produced before
+# `-Dlinkage` existed, and the one every gate in this repository's recorded
+# history observed.  A shared-artifact matrix is a separate gate: it is the
+# same `cross-test` run with `CROSS_BUILD_ARGS=(-Dlinkage=dynamic)` supplied
+# by whoever runs it, so this file does not hard-code one linkage and silently
+# narrow the other out.  A platform with no dynamic linker — WASI, whose
+# `std.Target.DynamicLinker.kind` is `.none` — still builds under that flag:
+# `build.zig` prints that it delivered a static archive for it, because a
+# `.so` there is a file nothing can load.
+#
 # The build step `cross-test` runs: the package's own Zig test binary, for the
 # target the harness selected. Not `check`, which runs nothing.
 CROSS_BUILD_STEP=test

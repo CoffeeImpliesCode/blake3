@@ -47,24 +47,67 @@
         // The separate consumer package: proof that the published module
         // resolves from a package that did not write it, through a relative
         // path rather than a fetch.
-        "consumer",
+        "consumer/build.zig",
+        "consumer/build.zig.zon",
+        "consumer/src/main.zig",
         // Upstream's three licence texts, which cover the whole work: "This
         // work is released into the public domain with CC0 1.0. Alternatively,
         // it is licensed under any of the following: Apache 2.0, Apache 2.0
-        // with LLVM exceptions" (README.md:191-197). A private repository
-        // removes no licence obligation, so all three ship with the package.
+        // with LLVM exceptions" (README.upstream.md:191-197). A private
+        // repository removes no licence obligation, so all three ship with the
+        // package. README.md is this fork's own file and README.upstream.md is
+        // upstream's pristine text, kept byte for byte as the record it is;
+        // both are named, because the fork's canonical README is what a
+        // dependent reads to learn what this package is, and a fetched copy
+        // without it is a tree with no front page. Upstream's own README is
+        // not the same document and is not a substitute for it.
         "LICENSE_A2",
         "LICENSE_A2LLVM",
         "LICENSE_CC0",
         "README.md",
+        "README.upstream.md",
         "UPSTREAM.md",
         "UPSTREAM.sha256",
         "README.zig.md",
         "NOTICE.md",
         "CHANGELOG.md",
         "FORK-NOTES.md",
-        // .zig-cache/, zig-out/, zig-pkg/ and consumer/.zig-cache/ are
-        // deliberately absent: build outputs and fetched packages are not
-        // part of a package. See .gitignore.
+        "FORK-LICENSE.md",
+        // The runtime loader core the API role owns, and this library's
+        // generated dispatch and descriptor beside it. It is a dependency of
+        // the published module, so a dependent that fetches this package must
+        // receive it. `build.zig` imports `runtime/graph.zig` and, under
+        // `-Druntime`, substitutes `graph.createModule(b, translate, target,
+        // optimize)` for `translate.createModule()` — the substitution is
+        // wired, and this directory is what makes `-Druntime` a configuration
+        // that compiles rather than an option nothing implements.
+        "runtime",
+        // Standalone Nix packaging. `package.nix` is the one source-only
+        // derivation and builds the `.static` and `.dynamic` variants of this
+        // same tree; `flake.nix` exposes them; `devenv.nix`, `devenv.yaml` and
+        // `.envrc` provide the canonical development shell. `flake.lock` is
+        // named because it exists and `flake.nix` cannot resolve its pinned
+        // nixpkgs without it, so a fetched copy that dropped it would read a
+        // different revision from the one `flake.nix` names. `devenv.lock` is
+        // not in this tree and so is not named: naming a path that is not
+        // there would make `zig fetch` hash a missing entry.
+        "package.nix",
+        "flake.nix",
+        "flake.lock",
+        "devenv.nix",
+        "devenv.yaml",
+        ".envrc",
+        // `.github/` is deliberately absent. The directory holds upstream's own
+        // `ci.yml` and `tag.yml`, which drive `cargo`, CMake and this fork's
+        // release-asset upload against a maintainer's infrastructure, and a
+        // dependent who fetched this package must not receive workflows that
+        // would run in their repository. `verify.yml` is this fork's, and it
+        // is repository CI rather than package content; `box2d/build.zig.zon`
+        // states the same exclusion and the same reason.
+        //
+        // .zig-cache/, zig-out/, zig-pkg/, consumer/.zig-cache/ and the Nix
+        // and devenv working-tree artefacts are absent for the same reason:
+        // build outputs, a fetched package tree, a `result` symlink and shell
+        // state are not part of a package. See .gitignore.
     },
 }

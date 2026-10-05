@@ -13,6 +13,12 @@
 //! Upstream's vectors do not carry their inputs, because every one of them is
 //! the same repeating 251 byte pattern `0, 1, ... 250, 0, ...`. So the empty
 //! case has no bytes and the three byte case is `00 01 02`.
+//!
+//! The same source builds against a linked package and against a
+//! runtime-loaded one. `blake3.runtime_loaded` is a comptime constant, so the
+//! difference is one branch and no duplicated program: in the runtime-loaded
+//! build the provider is named on the command line (`--provider <path>`) or in
+//! `BLAKE3_TEST_PROVIDER`, loaded once, and the same published answers follow.
 
 const std = @import("std");
 const blake3 = @import("blake3");
@@ -50,19 +56,27 @@ const three_byte_extended =
 const three_byte_extended_tail =
     "5d25cdd0e448328a8e7a683b9a6af8b0af94fa09010d9186890b096a08471e4230a134";
 
-pub fn main() !void {
-    var threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+/// A runtime-loading build has no provider until one is named.
+const ConfigurationError = error{NoProviderConfigured};
+
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
 
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
     const w = &stdout.interface;
 
+    // In a runtime-loading build every call below goes through a table that
+    // this one call fills. In a linked build the branch is not analyzed at all.
+    if (comptime blake3.runtime_loaded) {
+        try blake3.load(.{ .path = try providerRequest(init) });
+    }
+
     try w.print("blake3 consumer\n", .{});
-    // Through the raw escape hatch, so this line names the C library that was
-    // linked into this binary rather than a constant compiled into the source.
-    try w.print("linked C library reports version {s}\n", .{
+    // Through the raw escape hatch, so this line names the C library this build
+    // reached rather than a constant compiled into the source.
+    try w.print("{s} C library reports version {s}\n", .{
+        if (blake3.runtime_loaded) "loaded" else "linked",
         std.mem.span(blake3.c.blake3_version()),
     });
 
@@ -124,6 +138,39 @@ pub fn main() !void {
 
     try w.print("every digest matched the published vectors\n", .{});
     try w.flush();
+}
+
+/// The provider this run should load, from `--provider <path>` or from
+/// `BLAKE3_TEST_PROVIDER`.
+///
+/// Both are explicit. Nothing here looks in a default location, and a build
+/// that was not told which file to load says so rather than loading something
+/// else.
+fn providerRequest(init: std.process.Init) ConfigurationError![]const u8 {
+    const args = init.minimal.args.toSlice(init.arena.allocator()) catch
+        return noProvider();
+    var index: usize = 1;
+    while (index < args.len) : (index += 1) {
+        if (std.mem.eql(u8, args[index], "--provider")) {
+            if (index + 1 >= args.len) return noProvider();
+            return args[index + 1];
+        }
+    }
+    return init.environ_map.get("BLAKE3_TEST_PROVIDER") orelse
+        return noProvider();
+}
+
+/// Say which variable is missing. An error name on its own would send the next
+/// person into the loader instead of to the command line.
+fn noProvider() ConfigurationError {
+    std.debug.print(
+        "consumer: this is a runtime-loading build. Pass --provider <path>, or " ++
+            "export BLAKE3_TEST_PROVIDER with a shared object exporting the nine " ++
+            "entry points of c/blake3.h. Nothing is loaded by default and no " ++
+            "other file is tried.\n",
+        .{},
+    );
+    return error.NoProviderConfigured;
 }
 
 /// Print one answer and fail if it is not the expected one.

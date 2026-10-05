@@ -30,6 +30,32 @@
  * One spelling, one meaning per mode, and no fork-only macro that a consumer
  * could have to agree with.
  *
+ * What the DLL macros are, and where they come from
+ * -------------------------------------------------
+ * `blake3.h` reads `BLAKE3_DLL` and `BLAKE3_DLL_EXPORTS` to decide whether a
+ * declaration is `__declspec(dllexport)`, `__declspec(dllimport)` or neither
+ * (`c/blake3.h:7-19`).  They are *not* defined here, and nothing in this
+ * header should define them: upstream's own build puts them on the compiler
+ * command line, not in the header, because they describe how this
+ * particular library was linked rather than what the interface is.
+ *
+ *   * `zig build -Dlinkage=static` (the default) defines neither, which is
+ *     how a static archive is consumed on every platform.
+ *   * `zig build -Dlinkage=dynamic` defines `BLAKE3_DLL` and
+ *     `BLAKE3_DLL_EXPORTS` on the library's own compile line and
+ *     `BLAKE3_DLL` alone on this translation, which is the split upstream
+ *     makes between `PRIVATE` and `PUBLIC` (`c/CMakeLists.txt:139-145`).
+ *   * The installed `libblake3.pc` carries `-DBLAKE3_DLL` in `Cflags` for a
+ *     shared install, so a C consumer gets the same answer without repeating
+ *     the flag.  That is upstream's `PKG_CONFIG_CFLAGS` line
+ *     (`c/CMakeLists.txt:144`).
+ *
+ * On anything that is not Windows or Cygwin (`c/blake3.h:8`) both macros are
+ * unread and `BLAKE3_API` is the visibility attribute instead, so the
+ * declarations below are identical in every configuration.  That is why
+ * defining them for a non-Windows build is upstream's behaviour rather than
+ * a portability exception, and why this file stays silent about them.
+ *
  * What is deliberately not here
  * ------------------------------
  * A copy of any declaration.  blake3.h is the only public header upstream

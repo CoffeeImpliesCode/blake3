@@ -218,7 +218,10 @@ records that as unassigned rather than answering it. Upstream's triple choice �
 CC0 1.0, Apache-2.0, or Apache-2.0 with the LLVM exception — stays exactly as
 upstream states it, and the Apache obligations that attach to redistributing
 upstream's work are met either way. The choice belongs to this fork's owner and
-belongs in `NOTICE.md` when it is made.
+belongs in `NOTICE.md` when it is made. **Superseded in part by entry 17** (2026-10-04):
+the owner made that choice, and the licence is now stated rather than
+unassigned. What this entry withdrew — borrowing `LICENSE_A2` for files upstream
+never saw — remains withdrawn.
 
 **Status: source-confirmed.** A change of record, not of code: no gate is
 involved and none is claimed.
@@ -410,3 +413,293 @@ check inside that materialised copy and `consumer/` inside it were all taken
 before `cross-test.profile.sh` entered `.paths`, so they stand as history; a
 final filtered fetch of the current tree and those two gates inside it have not
 run, and nothing about the current `.paths` is claimed until they do.
+
+## 16. Zig API contract alignment — 2026-10-03
+
+**Condition.** A constructed `Hasher` is a value with independent copies;
+input and output slices still carry the native aliasing obligations.
+The former adjacent `c` registration exposed an internal build dependency.
+
+**Fix.** Document constructed state, copies, borrowing, output mutation,
+native allocation and concurrency at the authored declarations. Keep raw C
+through `blake3.c`; remove the separate internal module registration. Supply
+a complete module example and correct the version/header citations.
+
+**Verification and bound.** Zig 0.16.0, native Linux x86-64: install,
+Debug/ReleaseSafe tests, smoke, the separate package consumer and the module
+example pass. The published compile-only `check` matrix passes. Foreign
+runtime, portable-option and hosted CI results are not refreshed by this entry.
+No native source, header, generated binding or provenance pin changed.
+
+
+## 17. Made the owner's licence grant for the fork layer — 2026-10-04
+
+**Condition.** Entry 12 withdrew an invented Apache-2.0 offer for the files this
+fork writes and recorded the question as unassigned, because nobody in the
+repository had authority to make the grant.
+
+**Fix.** The owner authorized a per-project licence for fork-authored additions,
+matching the primary upstream terms where appropriate. The grant is now made and
+recorded: `CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception`, the same
+three-way choice upstream states for its own work. All three texts already ship
+verbatim, so nothing was written, summarised or edited to carry it. The SPDX
+identifier for every file this fork authors, including the new runtime and Nix
+files, is that whole expression.
+
+The grant does not claim upstream authorship, does not narrow upstream's own
+choice, and does not relabel any file that carries its own terms. No personal
+copyright identity was invented for the fork layer. `FORK-LICENSE.md` states the
+grant and the authorization; `NOTICE.md` carries the inventory and the Apache-2.0
+§4/§3 obligations.
+
+**Status: source-confirmed.** A change of record, not of code. Entry 12's
+withdrawal stands as a withdrawal of *that* offer; this entry records what
+replaced it.
+
+## 18. Gave this fork its own README, in the canonical order — 2026-10-04
+
+**Condition.** `README.md` was upstream's own README, so the name a dependent
+sees first described upstream rather than this fork, and the fork's actual
+deviations, support matrix and consumption instructions were scattered across
+`README.zig.md` and the provenance files.
+
+**Fix.** `README.md` is now this fork's README, ordered: current native-source
+deviations, current native-build deviations with a dated history link to
+`CHANGELOG.md`, the current build/run/test matrix, then consumption.
+`README.zig.md` remains the interface documentation alone. Upstream's README is
+preserved unchanged, byte for byte, as `README.upstream.md`.
+
+**Consequences outside this file's ownership.** `UPSTREAM.sha256` records
+upstream's README digest under the preserved path (`README.upstream.md`), the
+same bytes and the same SHA-256; every citation of upstream's README prose now
+names `README.upstream.md` with unchanged line numbers. `build.zig.zon`
+`.paths` must list `README.upstream.md` and the new files; that is the build
+owner's edit.
+
+**Status: pending-verification.** The relocation moved a path, not a byte, and
+the digest is unchanged, but `sha256sum -c UPSTREAM.sha256` has not been re-run
+against the current tree.
+
+## 19. Added the standalone Nix and devenv packaging — 2026-10-04
+
+**Condition.** This SDK had no Nix packaging, so it was not standalone: a
+consumer had no source-built package to depend on and no canonical way into a
+development shell.
+
+**Fix.** `package.nix` is one source-only derivation consumed by both `flake.nix`
+and `devenv.nix`. It builds this tree's own `c/` through this tree's own
+`build.zig`, imports nothing from a sibling directory, names no host account,
+node or store path, reads no environment variable at evaluation time and
+downloads nothing at build time. The flake exposes `static` and `shared` as
+separate variants of that one derivation and resolves `default` to the static
+one, preserving this SDK's existing linkage policy. `devenv` is the canonical
+development shell: tools and namespaced tasks only, with lazy `outputs.static`
+and `outputs.shared` calling the same derivation, so entering the shell never
+builds the library. One writer per installed path — the build graph installs the
+native library, the public header, `libblake3.pc` and the six licence and
+provenance records under `share/licenses/blake3/`, and the derivation writes
+none of them.
+Each task body now opens by changing to this module's own directory — devenv runs
+a task with the caller's working directory, which is not this SDK — and every
+`zig build` in it carries `-j8`, `--summary all`,
+`--cache-dir "$ZIG_LOCAL_CACHE_DIR/blake3"` and
+`--global-cache-dir "$ZIG_GLOBAL_CACHE_DIR"`, so no build resolves a cache of
+its own and this SDK's `.zig-cache` is never used. A cache variable the caller
+exported is used unchanged; a missing one is filled from `XDG_CACHE_HOME`, then
+from `TMPDIR`, and the task refuses to run before the compiler when neither names
+a location — the fills are in the bodies, not only in `enterShell`, because
+`devenv tasks run --mode single <name>` does not run it. `sdk:build`, whose step
+is the install step, also passes `--prefix
+"$ZIG_LOCAL_CACHE_DIR/blake3-prefix"` and so writes no `zig-out/` either; no other
+task installs, so no other task carries a prefix. No build graph, task name,
+linkage, mode, argument forwarding or install layout changed, and no task has
+been run since this change.
+
+**What is deliberately absent.** `devenv.lock` is the driver's to generate from
+observed evaluation; an invented narHash would fabricate exactly the digest a
+lock file exists to record. `flake.lock` is present, is named in `build.zig.zon`
+because it exists, and carries one `github:NixOS/nixpkgs` pin at revision
+`c7def046b9a883d46974757852106483d741586f`; it is a lock record rather than
+authored material, and `.gitignore` keeps it because it is a real input that
+belongs to the driver. The derivation never passes `-Dsystem`, so a system library
+can never stand in for a source result, and never passes `-Druntime`, so it makes
+no claim about the runtime route.
+
+**Status: pending-verification.** Neither derivation has been evaluated or built,
+and no output layout or dependency record has been inspected.
+
+## 20. Added the runtime-loading route — 2026-10-04
+
+**Condition.** A consumer could only reach this library by linking what this
+tree compiles. There was no way to name a provider at run time.
+
+**Fix.** `-Druntime=true`, declared in `build.zig`, default off, and independent
+of `-Dlinkage`. Under it nothing is linked into the module — neither the archive
+this tree compiles nor an installed system library — and each selected native
+entry point dispatches through one process-lifetime table filled by an explicit
+`load`. The library is still built and installed, so a caller may name a
+provider this tree did not build and may equally name the one it did; the
+configure-time line says which situation a build is in. The source is explicitly
+`.path` (an absolute file path) or `.system` (a basename handed unchanged to the
+platform loader); there is no path-to-system fallback and no automatic retry.
+The files are `runtime/loader.zig`, `runtime/sync.h`, `runtime/sync.c`,
+`runtime/generate.zig`, `runtime/graph.zig`, `runtime/library.zig`,
+`runtime/load_tests.zig` and `runtime/misuse.zig`.
+
+**Two boundaries this entry owns.** First, **one core-module instance per
+build**: `graph.createModule` creates the single core module the generated
+dispatch uses and re-exports `LoadSource`/`LoadError` from it, so the runtime
+branch of `build.zig` imports only `c` and adds no `rt` import of its own. A
+second core module created for the facade would make its `LoadSource` a nominal,
+different type, and `blake3.load(source)` would hand the facade's type to a
+function expecting the dispatch's. The linked branch has no dispatch, so there
+`createCoreModule` is imported as `rt` and the facade picks with a comptime
+branch on `runtime_loaded`. Second, the `blake3_rt` synchronization prefix is
+written twice by necessity — as `-DRT_SYNC_PREFIX` in `graph.zig` and as bound
+symbol names in `library.zig` — so the two must be changed together. **A second
+independent instance of this SDK in one binary needs both changed**; that is a
+real limit of this design, recorded here rather than discovered at link time.
+
+**The ABI boundary is stated, not assumed.** The provider must export the nine
+public entry points of the plain C library; `blake3_hasher_update_tbb` is not
+among them because it sits behind `BLAKE3_USE_TBB`. It must have been compiled
+against the same `blake3.h` and the same `BLAKE3_MAX_DEPTH`, `BLAKE3_BLOCK_LEN`,
+`BLAKE3_OUT_LEN`, `BLAKE3_KEY_LEN` configuration. Symbol lookup and a version
+string are not ABI proof. The loader allocates nothing, and the only libc
+dependency is the platform loader itself, so a `-static` binary cannot use this
+route.
+
+**Status: pending-verification.** Nothing here has been executed. No
+runtime-loaded consumer, no failure, retry, idempotence, provider-change,
+atomic-publication or release-mode panic check has run, and no receipt exists.
+
+**What the build gates, and what it does not.** `runtime/load_tests.zig` is an
+`addTest` root wired only under `-Druntime=true` behind the step
+`runtime-test`; its own comptime guard refuses to compile against a linked
+module, so wiring it unconditionally would wire a compile error. It reads
+`BLAKE3_TEST_PROVIDER` and `BLAKE3_TEST_ALIEN` from the caller's environment,
+because `Step.Run` takes only literal strings in an environment map
+(`Run.zig:595-598`) and there is no API for a build-time-resolved path there;
+without them the step fails rather than skipping. `runtime/misuse.zig` is
+compiled in **both** configurations — its `linked-load` mode asserts the message
+a linked build produces — and is install-depends-on rather than an installed
+deliverable. The step `runtime-misuse` runs `after-load <provider>` with
+`expectExitCode(0)`: **the control only.** `pre-load` and `linked-load` are
+compiled everywhere but no build step runs them, because their assertion is
+that the program stops and `Step.Run` exposes only `expectExitCode(u8)`
+(`Run.zig:628-631`) — writing down an exit code nothing has observed would be a
+fabricated gate. Those two modes are driver-run and driver-observed.
+`zig build check -Druntime=true` does compile both programs for all six matrix
+targets, because `add_target_check` builds through the same `add_graph`.
+
+
+## 21. Made static and shared delivery selectable — 2026-10-04
+
+**Condition.** The build hard-coded `.linkage = .static`. A consumer that needed
+a loadable shared object — or a runtime-loaded route, which needs one on disk —
+had no way to ask for it, and the only artefact this SDK could produce was an
+archive.
+
+**Fix.** `-Dlinkage=static|dynamic`, defaulting to `static`. The default is what
+the SDK produced before the option existed, so no existing consumer's linkage
+changes and no recorded gate result is invalidated by the option's arrival. The
+shared variant is a real shared object: PIC on the core and on every
+independently compiled per-ISA kernel object, real exports, and the complete
+closure — core, dispatch, and each kernel object — inside one artefact. No
+source is dropped to make it link, and the installed `blake3.h` is identical in
+both variants.
+
+**One deliberate deviation from upstream, on the static side.**
+`-fvisibility=hidden` reaches the shared delivery only. Upstream sets
+`C_VISIBILITY_PRESET hidden` unconditionally (`c/CMakeLists.txt:150-155`), so
+upstream's own static archive carries the flag and this one does not. The reason
+is cost, not principle: `static` is the delivery every gate in this repository's
+recorded history observed, and adding a flag to that command line would perturb a
+verified build for a property that is inert there — visibility governs a dynamic
+symbol table and an archive has none, so a hidden symbol in an archive is still
+linkable. The artifact that actually has an export surface, the shared object,
+matches upstream exactly. The static build's C command line is therefore
+unchanged from before this option existed. `FORK-NOTES.md` §19 has the finding
+and the reasoning.
+
+**Status: pending-verification, and narrower than it was.** A shared object has
+now been produced: all four optimize modes of `20261004T233628757747Z-69351`
+built and installed one, and the loader opened that exact `libblake3.so.0.1.8` in
+all eight `-Druntime=true` cells of `20261004T232823091897Z-23133`, which is
+evidence that the export surface carries what this facade calls. The export table
+and the relocations are still gates the driver owes; nothing about the shared
+variant's *contents* is claimed until they run.
+
+
+## 22. Repaired the dispatch root, nested variadic tuples and the refusal print — 2026-10-04
+
+**Condition.** `runtime/generate.zig` copied the translation's `const __root =
+@This();` prologue into the dispatch and, separately, wrote a `__root` of its own
+whenever a declaration copied in here referred to one. It also held one pending
+"write an empty tuple before this `)`" index at a time, so a variadic call
+inside another variadic call took the outer one's wait away from it.
+
+**Symptom, reproduced before this change** by running the generator's own CLI
+over two scratch inputs. `core-root-regression-input.zig` — the prologue, one
+`pub extern fn get() callconv(.c) c_int`, one `pub inline fn helper()` returning
+`__root.get()` — produced a dispatch carrying `const __root = @This();` twice, at
+lines 81 and 158, which `zig ast-check` rejects as a duplicate member.
+`core-varargs-regression-input.zig` — a variadic `inner` and `outer`, and a
+helper returning `outer(inner(7))` — produced `outer(inner(7, .{}))`: only the
+inner call was given the tuple that both wrappers take.
+
+**Fix.** Planning classifies the prologue as a class of its own, on the same
+`isThisPrologue` answer the patch already asks for, so the dispatch writes one
+`__root`, in the preamble, only when a copied declaration refers to one, and the
+patched translation's line is still repointed at the dispatch. `writeCopied`
+gives every call that is owed a tuple one, at that call's own closing paren, so
+nested calls, calls side by side, and a nested call to a non-variadic wrapper
+each get exactly one `, .{}`; the local, field, string and comment decisions are
+unchanged. **Its allocation invariant:** a declaration rewritten only for a
+routed data object, and a declaration making a single variadic call, allocate
+nothing here. One outstanding close is held in one optional index, as before; the
+arena stack is appended to only when a second call is discovered while the first
+has not closed. Any two closes pending together are strictly nested — balanced
+parentheses are either nested or disjoint, and a disjoint later call is reached
+only after the earlier one has closed — so the innermost close is always on top,
+and no nesting depth is assumed or capped. Separately, `runtime/loader.zig`
+discarded `Config.validate`'s refusal text, so a provider failing the
+post-resolution check returned `ValidationFailed` and said nothing about why; it
+now prints the refusal, as the other copies of that core do, with the load's
+closed-failure, readiness and no-reset semantics unchanged.
+`runtime/graph.zig`'s `provider_excluded` comment said the list keeps
+declarations direct; `--exclude` routes to `optional` (`generate.zig`,
+`Options.routeOf`), and only `libc_noise` keeps a declaration direct, so the
+comment says that instead. No route policy changed.
+
+**Status: partly observed.** The driver ran
+both scratch inputs through the real generator and compiled a real generated
+consumer that loaded an actual shared C provider, which covered the dispatch
+root and one working shape of the tuple repair
+(`local://foundation-resumed-core-root-actual-loaded-run-after.json`,
+`local://foundation-resumed-core-varargs-actual-loaded-run-after.json`). That was
+the revision that marked every outstanding close in a token-indexed table, which
+cost one byte per token for every rewritten declaration. **The
+single-index-plus-stack revision above is the one still unobserved by a targeted
+repro.** Its first form
+truncated the stack before reading the close it was about to return, so the real
+generator aborted with SIGABRT-6 on an index one past the new length
+(`local://foundation-resumed-core-varargs-stack-revision-repro.json`). The
+repaired form reads the innermost close before truncating, and **it has now
+run**: the eight `-Druntime=true` cells of epoch `20261004T232823091897Z-23133`
+execute the real generator over this tree's own translated header in every cell —
+each cell's receipt names the `blake3-runtime-generate-…` executable it ran — and
+the dispatch it wrote compiled and answered all six published-vector tests in
+each, across four optimize modes and both linkages, with the facade reaching a
+provider through the loader. The 53-target cohort of `20261004T221720228710Z-45046`
+builds the same graph without `-Druntime` and never runs the generator.
+
+What that does not reach is unchanged. A nested variadic call inside another one
+— the shape the scratch input exists for — occurs nowhere in this header, so the
+tuple repair itself is still exercised only by the two scratch runs named above.
+What the SDK graph adds is the rest of the generator: a dispatch that compiles
+*and* answers six published vectors under four optimize modes and both linkages,
+which neither scratch run did.
+
+The loader print is on the refusal path and no run above
+refused a provider; the `graph.zig` change is a comment. Neither is exercised.

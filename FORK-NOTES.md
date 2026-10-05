@@ -17,6 +17,13 @@ wrote it and failed on the very targets it was meant to cover, which is
 there the code was right on every one of the 53 platforms and the *deadline*
 was wrong, so the fix was a number in the harness profile and not one line of
 source.
+Entries 14 to 19 are a fourth class again: nothing failed and nothing was run.
+Each is a place where a record, a path, a metadata attribute or a build comment
+can quietly assert something false — a digest filed against the wrong path, an
+invented lock hash, a single-identifier label standing in for a three-way
+licence choice, a gate written for an exit code the build API cannot express, a
+comment that did not describe its code — and in each the failure is a false
+statement rather than an error message.
 
 ---
 
@@ -213,7 +220,8 @@ machine, not a verdict on the mode, and it must not be written up as one.
 
 **Decision.** `UPSTREAM.sha256` hashes exactly the upstream-owned entries of
 `build.zig.zon` `.paths`: the whole `c/` directory, `test_vectors/test_vectors.json`,
-the three licence texts and upstream's `README.md`. 52 records, one per file.
+the three licence texts and upstream's README, preserved here as
+`README.upstream.md`. 52 records, one per file.
 
 *Why not the whole upstream tree.* The Rust crate, the benches, the media, the
 upstream CI and `CONTRIBUTING.md` are carried in the repository for provenance,
@@ -246,11 +254,12 @@ driver, not by anything computed here.
 (`local://foundation-expansion-blake3-immutable-integrity-80.log`). The weaker
 question the record cannot answer — are those bytes the pinned commit's? — was
 answered separately: `git diff --exit-code f3149ec5… -- c test_vectors
-LICENSE_A2 LICENSE_A2LLVM LICENSE_CC0 README.md` printed nothing and exited 0
+LICENSE_A2 LICENSE_A2LLVM LICENSE_CC0 README.md` — the path as it was named when
+that ran; upstream's README is `README.upstream.md` today — printed nothing and
+exited 0
 (`…-pristine-source-81.log`). What still needs a re-fetch is the archive
 digest, and `UPSTREAM.md` § "Archive receipt" says so.
 
----
 
 ## 8. What has not been observed
 
@@ -267,11 +276,13 @@ file rather than in that table:
   this host has a runner. A receipt naming `check` is compile evidence and never
   claims a foreign binary ran; a receipt naming `cross-test` carries the test
   count it actually observed.
-* **`build_only` is a compile result.** In the current full matrix 33 of the 53
-  platforms have no runner on this host. Their rows say `build_only`, their test
-  count is null, and no file in this fork counts one of them as a test pass.
-  That is a fact about this machine, and it is not a claim that those platforms
-  work or that they do not.
+* **`build_only` is a compile result.** In the cohort that is current for this
+  tree — `20261004T221720228710Z-45046`, receipt `blake3-53-target-8.json` — 33
+  of the 53 platforms have no runner on this host, and the 2026-10-02 cohort
+  before it split the same way. Their rows say `build_only`, their test count is
+  null, and no file in this fork counts one of them as a test pass. That is a
+  fact about this machine, and it is not a claim that those platforms work or
+  that they do not.
 
 ---
 
@@ -563,3 +574,190 @@ the per-test number raised again. `CHANGELOG.md` entry 15.
 **Targets bound.** The `cross-test` harness's two deadline settings; BLAKE3
 1.8.7's 35-case `test_vectors/test_vectors.json`; QEMU-user `aarch64` and
 `aarch64_be` on this host.
+
+## 14. Relocating a file relocates the integrity record, not the bytes
+
+**Condition.** `README.md` was upstream's own README, byte for byte, and the
+integrity record named it at that path. Giving the fork its own README under
+that name moves the upstream bytes to a new path — while the digest of those
+bytes does not move at all.
+
+**Symptom.** None observed. This is the trap: nothing fails, and the failure
+mode is silent. A record left naming `README.md` would report the fork's own
+prose as upstream's pinned bytes, and would fail the first time anyone ran
+`sha256sum -c UPSTREAM.sha256`.
+
+**Fix.** The record names `README.upstream.md` with the identical digest
+`37eb920117b5b75d2079862e1de630b892c5b0428abe6190eaf55778b0630826`. Every
+citation of upstream's README prose names the preserved path; the line numbers
+are unchanged precisely because the bytes are unchanged. The header comment says
+why `README.md` is absent, so the next reader does not add it back.
+
+**Status.** `PENDING-VERIFICATION` — the relocation is a path change, but
+`sha256sum -c UPSTREAM.sha256` has not been re-run against the current tree.
+
+**Bound to.** Any integrity record written as `<digest>  <path>` lines. It is
+not bound to BLAKE3 and not to Markdown.
+
+## 15. An absent lock file is a missing receipt, not a licence to invent one
+
+**Condition.** A flake that names a `nixpkgs` input and carries no `flake.lock`.
+
+**Symptom.** None observed. The temptation is the failure: a narHash typed from
+memory, or copied from an unrelated project, looks like completeness and is
+indistinguishable from a fabrication once it is in the tree.
+
+**Fix.** `flake.nix` declares the pinned input URL and carries no lock;
+`devenv.yaml` pins its revision explicitly so a clean checkout resolves
+deterministically without reading a lock. Both lock files are named in the
+documentation as the driver's to generate from an observed evaluation. The same
+rule covers the source filter: it names no hash, no store path and no host path,
+because `src = ../.` is this repository's own tree and needs no fixed-output
+derivation at all.
+
+**Status.** `SOURCE-CONFIRMED` — read out of the three files as written. Neither
+was evaluated.
+
+**Bound to.** nixpkgs revisions this workspace has observed; a different pin is a
+different claim and needs its own evaluation.
+
+## 16. A package-level licence label cannot express a three-way choice
+
+**Condition.** Upstream offers CC0 1.0, Apache 2.0, or Apache 2.0 with the LLVM
+exceptions. `meta.license` takes exactly one SPDX identifier.
+
+**Symptom.** None observed. The failure is a false statement: picking one branch
+silently and recording it as `license` reads as "this package is licensed under
+X" when the repository is licensed under "X or Y or Z".
+
+**Fix.** `meta.license` names one branch with an adjacent comment stating that it
+records only the branch this output is distributed under, that it narrows
+nothing, and that `FORK-LICENSE.md` and `NOTICE.md` hold the actual choice. The
+SPDX identifier for the fork's own source and build files is the whole
+expression, which a per-file header *can* express and a `meta` attribute cannot.
+
+**Bound to.** Any upstream whose licence is a disjunction. An upstream under a
+single licence would not have hit this.
+
+## 17. What has not been observed in this migration
+
+Recorded so a later reader does not mistake silence for a result — and kept
+current as those silences fill in. Every gate this migration touched is listed
+with its state in `README.md` § "Build / run / test matrix" and in
+`README.zig.md` § "Verification status"; where a row there still reads
+`PENDING-VERIFICATION`, that table is the record and this section is not a
+second copy of it.
+
+Two of the items this entry was written with have since closed against this tree,
+and one has not. A shared object **has** been produced: all four optimize modes
+of `20261004T233628757747Z-69351` built and installed it, and the loader opened
+that exact `libblake3.so.0.1.8` in all eight `-Druntime=true` cells of
+`20261004T232823091897Z-23133`. The symbol-table and relocation inspection it
+owes still has not been run. A runtime-loaded consumer **has** been built and
+run — this tree's own provider, loaded by explicit path, six of six published
+vectors in every cell, four optimize modes and both linkages. What has *not* been
+run is the independent half of that route: no external provider was accepted for
+this SDK, and in `20261004T232439Z` every route carries
+`counts_as_external_coverage: false`, the one success being the own provider.
+
+Still unobserved, and still silent for the same reason: neither Nix derivation
+has been evaluated or built, no devenv shell has been entered, no `consumer/` or
+installed-C program has been built against one of those cohorts' prefixes, the
+`runtime-test` lifecycle suite and all three misuse modes have not been executed,
+and the integrity record has not been re-run since the README relocation.
+
+The runtime route's boundary is stated rather than measured. Symbol resolution,
+a `blake3_version()` string and a release text are **not** ABI proof — the ABI
+claim rests on the translated `blake3.h` and on the provider having been compiled
+with the same `BLAKE3_MAX_DEPTH`, `BLAKE3_BLOCK_LEN`, `BLAKE3_OUT_LEN`,
+`BLAKE3_KEY_LEN` configuration. That is a reading of the source, and no
+cross-configuration provider has been attempted — nor has a provider this tree
+did not build.
+
+## 18. An assertion the build API cannot express must not be written down as a gate
+
+**Condition.** `runtime/misuse.zig` has three modes. `after-load <provider>`
+must *succeed*; `pre-load` and `linked-load` must *stop* — the call arrived
+before any load, and the message must name the library, the function and the way
+out. All three are worth gating, and a gate table that quietly covered only one
+of them would read as though all three were covered.
+
+**Symptom.** None observed. The trap is a plausible-looking gate: `Step.Run` in
+this Zig release exposes `expectExitCode(u8)` (`Run.zig:628-631`) and nothing
+for "must not exit zero". Writing `expectExitCode(1)` would be inventing an exit
+code nothing has run and calling it an expectation.
+
+**Fix.** The `runtime-misuse` step runs `after-load <provider>` only, with
+`expectExitCode(0)` — the assertion the API can actually carry. `pre-load` and
+`linked-load` are compiled in every configuration and every optimize mode, and
+are **driver-run and driver-observed**; the tables in `README.md` and
+`README.zig.md` list them as a separate row from the control rather than folding
+them into it. `zig build check -Druntime=true` does compile both programs for
+all six matrix targets, because `add_target_check` builds through the same
+`add_graph`.
+
+The neighbouring limit is the same shape: `BLAKE3_TEST_PROVIDER` and
+`BLAKE3_TEST_ALIEN` are read from the caller's environment because `Step.Run`
+takes only literal strings in an environment map (`Run.zig:595-598`) — there is
+no API for a build-time-resolved path there. So the build inherits them rather
+than synthesising them, and `load_tests.zig` fails loudly when one is missing,
+which is what its own header specifies. Writing a skip-when-absent path would
+have been the fake fallback.
+
+**Bound to.** `std.Build.Step.Run`'s current surface. A release that grows an
+expectation for a non-zero exit would let these three modes become ordinary
+gates, and this note should be revisited then.
+
+## 19. A build comment and the code it describes disagreed
+
+**Condition.** Writing the linkage documentation required answering one
+question — is `-fvisibility=hidden` applied to the static build too? — and the
+build answered it twice, differently.
+
+**Symptom.** None observed; no gate has run. `build.zig:344-349` says the flag
+"is applied to the static build as well, because upstream applies it there too
+(`c/CMakeLists.txt:150-155` sets it unconditionally, not under
+`BUILD_SHARED_LIBS`) and because a hidden symbol in an archive is still
+linkable". `cUnitFlags` at `build.zig:359-361` returns `c_flags_shared_flags` when
+`linkage == .dynamic` and plain `c_flags` otherwise, and
+`c_flags_shared_flags` is `c_flags ++ c_flags_shared`
+(`build.zig:370`) — so the code applies it to the shared delivery only. One of
+the two is wrong.
+**Decision.** Settled in favour of the **code**: `-fvisibility=hidden` reaches
+the shared delivery only, and `build.zig:343-362` now says so. The comment was
+the thing that changed. `cUnitFlags` (`build.zig:359-361`) was already correct;
+what was wrong was the prose above it.
+
+*Why the code and not the comment.* Upstream sets `C_VISIBILITY_PRESET hidden`
+unconditionally (`c/CMakeLists.txt:150-155`), so upstream's own static archive
+does carry the flag, and "match upstream exactly" is a real argument for the
+other resolution. It was not chosen because of the cost side: `static` is the
+delivery every gate in this repository's recorded history observed, and adding
+a flag to that command line perturbs a verified build for a property that is
+inert there — visibility governs a dynamic symbol table and an archive has
+none, so a hidden symbol in an archive is still linkable. The flag only does
+work where there is a table to narrow, which is exactly the shared object. The
+deviation is therefore confined to an inert property of the static artifact
+while the artifact that actually has an export surface matches upstream exactly.
+
+*What was wrong in the first report.* The build owner's handoff to this role
+stated that the flag "now also applies to the STATIC build" and listed that as a
+risk to a previously-green command line. The code never did that, so the risk
+did not exist and has been struck from every document here. The accurate
+statement is the reverse: the static build's C command line is unchanged from
+before `-Dlinkage` existed, and the shared build is the one carrying the flag.
+
+**Why it blocks nothing.** Both original resolutions left the static build's
+link behaviour unchanged, so this was never a defect that could produce a wrong
+artifact — it was a record asserting something untrue, which is the same class
+as entries 14 to 18 and for the same reason. The thing that genuinely would
+bite is a *different* one and is not in doubt: a kernel object compiled with
+default visibility would export `blake3_compress_in_place_sse41` from a shared
+object, which is why every C translation unit goes through the single
+`cUnitFlags` function (`build.zig:829`, `build.zig:889`).
+
+**Bound to.** One deliberate deviation from upstream's `C_VISIBILITY_PRESET`, on
+the static delivery, and to the reasoning that a build's recorded history should
+not be perturbed for an inert property. If a future gate ever *does* observe a
+difference between this static archive and upstream's, this entry is where the
+question belongs — not the flag's presence on the command line, which is now

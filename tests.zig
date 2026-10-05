@@ -24,6 +24,54 @@ const std = @import("std");
 const blake3 = @import("blake3");
 const testing = std.testing;
 
+/// A shared object exporting the nine entry points of `c/blake3.h`, named by
+/// the environment in a runtime-loading build.
+const provider_variable = "BLAKE3_TEST_PROVIDER";
+
+/// Make the native library usable, once, before a test calls the facade.
+///
+/// In a linked build the facade is usable already and this is a no-op at
+/// comptime. In a runtime-loading build every call into the module goes through
+/// a table that `load` fills, so this is where the one explicit load happens.
+/// It is safe to call from every test: the contract makes the same request
+/// idempotent, and the loader keeps the handle to the end of the process.
+///
+/// A build that was not told which file to load stops here with the variable's
+/// name, rather than reporting a test failure that says nothing about the
+/// reason. A suite that quietly stopped testing because a variable was unset
+/// would report success for nothing, and one that failed anonymously would send
+/// the next person looking in the loader instead of at the command line.
+fn nativeReady() void {
+    if (comptime !blake3.runtime_loaded) return;
+    if (blake3.loadedSource() != null) return;
+
+    var buffer: [4096]u8 = undefined;
+    const value = std.testing.environ.getAlloc(testing.allocator, provider_variable) catch
+        missingProvider();
+    defer testing.allocator.free(value);
+    if (value.len == 0 or value.len > buffer.len) missingProvider();
+    @memcpy(buffer[0..value.len], value);
+    blake3.load(.{ .path = buffer[0..value.len] }) catch |err| {
+        std.debug.print(
+            "tests.zig: loading " ++ provider_variable ++ " = \"{s}\" failed: {t}\n",
+            .{ buffer[0..value.len], err },
+        );
+        @panic("tests.zig: the provider named by " ++ provider_variable ++
+            " did not load; nothing below this line ran");
+    };
+}
+
+fn missingProvider() noreturn {
+    @panic(
+        "tests.zig: this is a runtime-loading build and " ++ provider_variable ++
+            " is not set. Point it at a shared object exporting the nine entry " ++
+            "points of c/blake3.h, for example the one `zig build " ++
+            "-Dlinkage=dynamic` installs, and export it for the whole `zig build` " ++
+            "invocation: the build cannot inject a path into a run step's " ++
+            "environment.",
+    );
+}
+
 /// Upstream's official vectors, embedded at compile time.
 const vectors_json = @embedFile("test_vectors/test_vectors.json");
 
@@ -177,6 +225,7 @@ fn expectSplitDigest(case: Case, message: []const u8, step: usize) !void {
 }
 
 test "every published case in all three modes, complete extended output" {
+    nativeReady();
     var fixture = try load(testing.allocator);
     defer fixture.deinit();
 
@@ -207,6 +256,7 @@ test "every published case in all three modes, complete extended output" {
 }
 
 test "one-shot helpers agree with the published digests" {
+    nativeReady();
     var fixture = try load(testing.allocator);
     defer fixture.deinit();
 
@@ -230,6 +280,7 @@ test "one-shot helpers agree with the published digests" {
 }
 
 test "streaming is invariant to how the input is split at block and chunk boundaries" {
+    nativeReady();
     var fixture = try load(testing.allocator);
     defer fixture.deinit();
 
@@ -259,6 +310,7 @@ test "streaming is invariant to how the input is split at block and chunk bounda
 }
 
 test "finalizeSeek reads the published extended output at an offset" {
+    nativeReady();
     var fixture = try load(testing.allocator);
     defer fixture.deinit();
 
@@ -289,6 +341,7 @@ test "finalizeSeek reads the published extended output at an offset" {
 }
 
 test "reset restores the initial state and keeps the mode" {
+    nativeReady();
     var fixture = try load(testing.allocator);
     defer fixture.deinit();
 
@@ -362,6 +415,7 @@ test "reset restores the initial state and keeps the mode" {
 }
 
 test "derive-key context is hashed by length, not up to a NUL" {
+    nativeReady();
     var fixture = try load(testing.allocator);
     defer fixture.deinit();
 

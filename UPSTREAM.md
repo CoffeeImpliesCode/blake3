@@ -18,7 +18,7 @@ Where each of those comes from, read out of the carried tree:
   and `c/CMakeLists.txt:12-13` (`project(libblake3 VERSION 1.8.7 ...)`). It is
   the version of the C library, not a version of the Zig wrapper, and it is what
   `build.zig.zon` carries in `.version`.
-* The licence string is `Cargo.toml:7` and, in prose, `README.md:191-197`:
+* The licence string is `Cargo.toml:7` and, in prose, `README.upstream.md:191-197`:
   "This work is released into the public domain with CC0 1.0. Alternatively, it
   is licensed under any of the following: Apache 2.0, Apache 2.0 with LLVM
   exceptions". All three texts ship: `LICENSE_CC0`, `LICENSE_A2`,
@@ -26,7 +26,7 @@ Where each of those comes from, read out of the carried tree:
 * The copyright line "Copyright 2019 Jack O'Connor and Samuel Neves" is the one
   the two Apache texts carry themselves (`LICENSE_A2:190`, `LICENSE_A2LLVM:189`).
   `Cargo.toml:4` names the same two people as the crate authors, and
-  `README.md:68-74` names the four designers: Jack O'Connor, Samuel Neves,
+  `README.upstream.md:68-74` names the four designers: Jack O'Connor, Samuel Neves,
   Jean-Philippe Aumasson and Zooko.
 
 **Tag signature: not verified here.** No GPG key was consulted while this file was
@@ -91,7 +91,13 @@ Everything named in `build.zig.zon` `.paths` that this fork did not write:
 | `c/` | upstream's C library, its CMake build, its examples and test harness, the hand-written assembly kernels for x86_64, the Rust FFI bindings directory and `c/README.md` — the whole directory travels, unmodified, so a dependent receives upstream's tree rather than a hand-picked subset |
 | `test_vectors/test_vectors.json` | upstream's official known-answer vectors; `tests.zig` embeds this file and `smoke.zig` quotes from it |
 | `LICENSE_A2`, `LICENSE_A2LLVM`, `LICENSE_CC0` | upstream's three licence texts, verbatim |
-| `README.md` | upstream's project README, which carries the licence grant (`README.md:191-197`) |
+| `README.upstream.md` | upstream's project README, preserved byte for byte from this commit's `README.md`, which carries the licence grant (`README.upstream.md:191-197`) |
+
+Upstream's README is the one file whose path in this repository differs from
+upstream's. Upstream calls it `README.md`; this fork's own README occupies that
+name, so upstream's is preserved as `README.upstream.md` with the same bytes and
+the same SHA-256. `UPSTREAM.sha256` records the digest against the preserved
+path. See `NOTICE.md` § "Upstream README relocation".
 
 ## What is carried but is not part of the package
 
@@ -140,8 +146,10 @@ is a hash of this working tree.
   gate that keeps working in a dependent's unpacked package, because it names
   only files `.paths` ships.
 * `git diff --exit-code f3149ec5bb5449af877ba20377a11008ff499fa2 -- c
-  test_vectors LICENSE_A2 LICENSE_A2LLVM LICENSE_CC0 README.md` produced no
-  output and exited 0 (`local://foundation-expansion-blake3-pristine-source-81.log`).
+  test_vectors LICENSE_A2 LICENSE_A2LLVM LICENSE_CC0 README.md` — `README.md` as
+  the path was named when this ran; upstream's README is now at
+  `README.upstream.md` — produced no output and exited 0
+  (`local://foundation-expansion-blake3-pristine-source-81.log`).
   That is the direct statement: the upstream files this package ships are the
   pinned commit's own bytes, not a reconstruction of them.
 
@@ -163,7 +171,10 @@ The output must read `b8352186f14559127a324333c3378f4208a2de9aea855746bf2fcd1f88
 2. Replace the `c/` directory wholesale from the new commit. Do not hand-patch
    upstream files to make a build problem go away.
 3. Copy `LICENSE_A2`, `LICENSE_A2LLVM`, `LICENSE_CC0` and `README.md` from the
-   new commit if they changed, and re-read the licence grant there.
+   new commit if they changed, and re-read the licence grant there. Upstream's
+   README is placed at `README.upstream.md` in this repository, never at
+   `README.md`: that name belongs to this fork's own README. The digest it gets
+   in `UPSTREAM.sha256` is the digest of the new file under the new path.
 4. Regenerate `UPSTREAM.sha256` over the same path set and bump the count in its
    header comment if it moved.
 5. Re-check `build.zig` against the new tree: it names file names, upstream line
@@ -178,5 +189,10 @@ The output must read `b8352186f14559127a324333c3378f4208a2de9aea855746bf2fcd1f88
   files, every file this fork adds or edits, and the Apache-2.0 obligations that
   attach to redistributing upstream's work.
 * `README.zig.md` — how to build, import and call the package.
+* `FORK-LICENSE.md` — the licence of this fork's own files, the owner
+  authorization behind it, and what it does not claim about upstream's work.
+* `README.md` — this fork's own README: native-source and native-build
+  deviations, the support matrix, and how to consume the package.
+* `README.upstream.md` — upstream's README, unchanged.
 * `CHANGELOG.md` — numbered fork-only divergences.
 * `FORK-NOTES.md` — the problems met while doing this and what was decided.

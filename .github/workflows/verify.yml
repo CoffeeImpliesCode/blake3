@@ -5,13 +5,15 @@
 # own artifacts and names this repository's commands. The Rust CI is not
 # retargeted at this fork's infrastructure.
 #
-# Three jobs, three different questions:
+# Four jobs, four different questions:
 #   native      does the upstream C compile and link, do the tests and the
-#               example run on this host, does the scalar-only core agree with
-#               the dispatched kernels on the same vectors, and does the
-#               installed header and archive serve a plain C program
+#               example run on this host in both linkages, does the
+#               scalar-only core agree with the dispatched kernels on the
+#               same vectors, and does the installed header serve a plain C
+#               program against both the archive and the shared object
 #   cross       does the whole package compile for each of the six matrix
 #               targets
+#   cross-shared the same six targets through -Dlinkage=dynamic
 #   consumer    does the published module resolve from a package that did not
 #               write it
 #
@@ -305,6 +307,104 @@ jobs:
             -o "$RUNNER_TEMP/c_surface_gate"
           "$RUNNER_TEMP/c_surface_gate"
 
+      # The static install has to be a package and not a source drop: the
+      # pkg-config file a consumer's build asks about, the carried licence
+      # material the binary ships under, and a header whose DLL state matches
+      # the artifact it is installed beside. `-DBLAKE3_DLL` must be absent
+      # here: c/blake3.h:17 leaves BLAKE3_API empty without it, which is what
+      # makes a static consumer's declarations undecorated.
+      - name: static install carries its link metadata and licence material
+        run: |
+          set -euo pipefail
+          test -f zig-out/lib/libblake3.a
+          test -f zig-out/include/blake3.h
+          test -f zig-out/lib/pkgconfig/libblake3.pc
+          test ! -e zig-out/lib/libblake3.so
+          ! grep -q -- '-DBLAKE3_DLL' zig-out/lib/pkgconfig/libblake3.pc
+          grep -q -- '-lblake3' zig-out/lib/pkgconfig/libblake3.pc
+          grep -q '^Version: 1\.8\.7$' zig-out/lib/pkgconfig/libblake3.pc
+          for f in LICENSE_A2 LICENSE_A2LLVM LICENSE_CC0 NOTICE.md \
+                   FORK-LICENSE.md UPSTREAM.md; do
+            test -f "zig-out/share/licenses/blake3/$f"
+          done
+          PKG_CONFIG_PATH="$PWD/zig-out/lib/pkgconfig" pkg-config --exists libblake3
+
+      # A real shared object, then the four questions nothing else in this file
+      # asks: is the file a shared object at all, does it carry upstream's
+      # soname, does it export exactly the public API, and are the
+      # per-instruction-set kernel objects inside it rather than beside it.
+      # `nm` and `readelf` are binutils, preinstalled on the runner.
+      - name: build the shared object
+        run: |
+          set -euo pipefail
+          rm -rf zig-out
+          zig build --summary all -Dlinkage=dynamic
+
+      - name: shared install is a loadable object with upstream's soname and BLAKE3's export set
+        run: |
+          set -euo pipefail
+          so=zig-out/lib/libblake3.so.0.1.8
+          test -f "$so"
+          test -L zig-out/lib/libblake3.so.0
+          test -L zig-out/lib/libblake3.so
+          test ! -e zig-out/lib/libblake3.a
+          grep -q -- '-DBLAKE3_DLL' zig-out/lib/pkgconfig/libblake3.pc
+          # c/CMakeLists.txt:150-155 sets SOVERSION 0, so the soname is
+          # libblake3.so.0 -- the name a loader has to be given.
+          readelf -d "$so" | grep -q 'SONAME.*\[libblake3\.so\.0\]'
+          # Every public entry point c/blake3.h:63-80 decorates with
+          # BLAKE3_API is exported...
+          for sym in blake3_version blake3_hasher_init blake3_hasher_init_keyed \
+                     blake3_hasher_init_derive_key blake3_hasher_init_derive_key_raw \
+                     blake3_hasher_update blake3_hasher_finalize \
+                     blake3_hasher_finalize_seek blake3_hasher_reset; do
+            nm -D --defined-only "$so" | grep -q " T ${sym}\$"
+          done
+          # ...and nothing else is. These are the cross-translation-unit
+          # internals of c/blake3_dispatch.c and the kernels, plus the one
+          # deliberately unconfigured entry point: c/blake3.h:72-75 declares
+          # blake3_hasher_update_tbb only under BLAKE3_USE_TBB, which upstream
+          # defaults off (c/CMakeLists.txt:20), so a provider that exports it
+          # is a different build and not this one.
+          for internal in blake3_hasher_update_tbb blake3_compress_in_place_sse2 \
+                          blake3_compress_in_place_sse41 blake3_compress_in_place_avx2 \
+                          blake3_compress_in_place_avx512 blake3_compress_xof_sse41 \
+                          blake3_hash_many blake3_hash_many_portable \
+                          blake3_hash_many_avx512 blake3_compress_subtree_wide \
+                          g_cpu_features; do
+            ! nm -D --defined-only "$so" | grep -q " ${internal}\$"
+          done
+          # The ISA kernels are inside the image. They are internal, so they
+          # appear in the full symbol table and not in the dynamic one; their
+          # presence there is what makes the run-time CPUID dispatch in
+          # c/blake3_dispatch.c:168-300 able to reach them at all.
+          for isa in sse2 sse41 avx2 avx512; do
+            nm "$so" | grep -q "blake3_compress_in_place_${isa}\$"
+          done
+          PKG_CONFIG_PATH="$PWD/zig-out/lib/pkgconfig" pkg-config --exists libblake3
+
+      # A C consumer that reaches the shared object through the installed
+      # metadata rather than by path, so the .pc file is exercised as well as
+      # present. The answers it checks are the same published vectors the
+      # static gate above uses; only the way it finds the library differs.
+      - name: installed C header links the shared object through pkg-config and runs
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$PWD/zig-out/lib/pkgconfig"
+          pkg-config --libs libblake3 | grep -q -- '-lblake3'
+          zig cc -std=gnu11 \
+            $(pkg-config --cflags libblake3) \
+            "$RUNNER_TEMP/c_surface_gate.c" \
+            $(pkg-config --libs libblake3) \
+            -Wl,-rpath,"$PWD/zig-out/lib" \
+            -o "$RUNNER_TEMP/c_surface_gate_shared"
+          "$RUNNER_TEMP/c_surface_gate_shared"
+
+      # Back to the package's default graph for the behavioural gates below, so
+      # each of them names the linkage it ran under.
+      - name: build (default linkage, restored for the gates below)
+        run: zig build --summary all
+
       - name: test (Debug)
         run: zig build test
 
@@ -322,6 +422,25 @@ jobs:
 
       - name: smoke (scalar core only, -Dportable=true)
         run: zig build smoke -Dportable=true
+
+      # The same published vectors through the shared object. A digest that
+      # disagreed here would mean the export set, the relocation of the ISA
+      # objects, or the run-time CPUID dispatch is wrong for the delivered
+      # artifact -- none of which the static gates can see.
+      - name: test (shared object, Debug)
+        run: zig build test -Dlinkage=dynamic
+
+      - name: test (shared object, ReleaseSafe)
+        run: zig build test -Dlinkage=dynamic -Doptimize=ReleaseSafe
+
+      - name: test (shared object, scalar core only, -Dportable=true)
+        run: zig build test -Dlinkage=dynamic -Dportable=true
+
+      - name: smoke (shared object)
+        run: zig build smoke -Dlinkage=dynamic
+
+      - name: smoke (shared object, scalar core only, -Dportable=true)
+        run: zig build smoke -Dlinkage=dynamic -Dportable=true
 
   cross:
     name: cross-target compile matrix
@@ -355,6 +474,59 @@ jobs:
       - name: check wasm32-wasi
         run: zig build check -Dtarget=wasm32-wasi --summary all
 
+  # The same six targets again through `-Dlinkage=dynamic`, and for the same
+  # reason the `cross` job exists: a shared object is a new artifact class,
+  # not a linkage flip, so "the static graph compiles for this target" says
+  # nothing about whether the shared one does. Six separate steps, no matrix
+  # row, no tolerated failure, for the reason spelled out at the top of this
+  # file.
+  #
+  # wasm32-wasi is in this list as a *documented refusal*, not as a compile.
+  # WASI has no dynamic linker (`std.Target.DynamicLinker.kind` is `.none` for
+  # it), so there is no shared object this package can deliver there, and
+  # `deliveredLinkage` refuses the request rather than handing back a static
+  # archive in its place: a `.a` where a `.so` was asked for is not the artifact
+  # the request named. The step below therefore asserts that refusal by name,
+  # which is a real observation of a real exit code and a real message.
+  # Compiling the portable core for wasm32-wasi is a different gate and the
+  # `cross` job above already runs it, under the default static linkage. The
+  # rule at the top of this file applies: the honest edit for an unsupported
+  # target is a step that asserts the documented failure, not a flag that
+  # hides it.
+  cross-shared:
+    name: cross-target compile matrix, shared artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: check x86_64-linux-gnu
+        run: zig build check -Dlinkage=dynamic -Dtarget=x86_64-linux-gnu --summary all
+
+      - name: check aarch64-linux-gnu
+        run: zig build check -Dlinkage=dynamic -Dtarget=aarch64-linux-gnu --summary all
+
+      - name: check aarch64-macos-none
+        run: zig build check -Dlinkage=dynamic -Dtarget=aarch64-macos-none --summary all
+
+      - name: check x86_64-windows-gnu
+        run: zig build check -Dlinkage=dynamic -Dtarget=x86_64-windows-gnu --summary all
+
+      - name: check riscv64-linux-gnu
+        run: zig build check -Dlinkage=dynamic -Dtarget=riscv64-linux-gnu --summary all
+
+      - name: check wasm32-wasi refuses shared delivery
+        run: |
+          set -euo pipefail
+          if out=$(zig build check -Dlinkage=dynamic -Dtarget=wasm32-wasi --summary all 2>&1); then
+            echo "expected the shared request to be refused for wasm32-wasi; it exited 0" >&2
+            exit 1
+          fi
+          printf '%s\n' "$out" | grep -q 'shared delivery is unsupported for'
+          printf '%s\n' "$out" | grep -q 'wasm32'
+
   consumer:
     name: consumer package
     runs-on: ubuntu-latest
@@ -369,4 +541,18 @@ jobs:
       # outside.
       - name: run
         working-directory: consumer
-        run: zig build run
+        run: zig build run -j8
+
+      # The same program, the same published digests, through the scalar core.
+      # `-Dportable` is forwarded by `consumer/build.zig`, so this exercises
+      # the route that is otherwise reachable only from inside this repository:
+      # no SIMD kernel is linked, and the answers still have to be the ones
+      # upstream publishes. It is a run, not a compile.
+      - name: run (scalar core only, -Dportable=true)
+        working-directory: consumer
+        run: zig build run -j8 -Dportable=true
+
+      # `-Dsystem=true` is forwarded too, and has no step here for the reason
+      # the header comment gives for the library's own system mode: it needs an
+      # installed `libblake3` with its own `blake3.h`, and a stock runner has
+      # neither. A claim about it needs a run on a machine that has one.
