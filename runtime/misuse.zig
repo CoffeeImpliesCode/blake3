@@ -1,30 +1,8 @@
 // SPDX-License-Identifier: CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception
-//
-//! The one observation a test cannot make about itself: what a call before a
-//! successful load does.
-//!
-//! A panic stops the process, so it cannot be observed from inside the test
-//! binary that caused it. This is a small program instead, built in both
-//! configurations and run as a child process; the build runner checks that it
-//! stops and that the message names the library, the function and the way out.
-//!
-//! ```sh
-//! zig build            # build it
-//! ./misuse pre-load           # stops: the call arrived before any load
-//! ./misuse after-load <path>  # succeeds: the same call after a real load
-//! ./misuse after-system <name> # succeeds: explicitly search for a basename
-//! ./misuse linked-load        # stops: a linked build has nothing to load
-//! ```
-//!
-//! `after-load` is the control. Without it, a stop in `pre-load` would be
-//! indistinguishable from a build that is broken for some other reason; with
-//! it, the same call through the same table succeeds as soon as a provider is
-//! loaded, which is the whole difference the test is about.
 
 const std = @import("std");
 const blake3 = @import("blake3");
 
-/// What this program was asked to do.
 const Mode = enum { pre_load, after_load, after_system, linked_load };
 
 pub fn main(init: std.process.Init) !void {
@@ -48,7 +26,6 @@ pub fn main(init: std.process.Init) !void {
 
     switch (mode) {
         .pre_load => {
-            // No load. The module is unusable, and saying so is the contract.
             report("calling hash() with no provider loaded");
             const digest = digestOf("misuse");
             std.debug.print("misuse: returned {s}\n", .{std.fmt.bytesToHex(digest, .lower)});
@@ -66,9 +43,7 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("misuse: {s}\n", .{std.fmt.bytesToHex(digest, .lower)});
         },
         .linked_load => {
-            // In a linked build there is no table, no provider and nothing to
-            // resolve, so asking is a programming error rather than an error a
-            // caller can handle.
+            // Linked builds have no provider table; calling `load` is a programming error.
             report("calling load() on a linked build");
             blake3.load(.{ .path = "unused" }) catch |err| {
                 std.debug.print("misuse: load reported {t}\n", .{err});

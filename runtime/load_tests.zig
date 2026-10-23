@@ -1,35 +1,4 @@
 // SPDX-License-Identifier: CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception
-//
-//! Behavioural tests for the runtime loader.
-//!
-//! ## What these tests are about
-//!
-//! The loader's contract is mostly about what happens *between* calls: a
-//! failure that publishes nothing, a retry that is the caller's to make, a
-//! second request for the provider already in use, a dozen threads arriving at
-//! one attempt. None of that is observable from a single call, which is why
-//! this is a separate test root instead of more cases in `tests.zig`.
-//!
-//! ## Real providers, no mock
-//!
-//! Every provider here is a real library that exists on the machine:
-//!
-//!   * `BLAKE3_TEST_PROVIDER` — a shared object exporting the nine entry points
-//!     of `c/blake3.h`. Nothing imitates the library's behaviour, and the
-//!     answers checked below come from upstream's own published vectors.
-//!   * `BLAKE3_TEST_ALIEN` — a loadable object that is not BLAKE3 at all. It
-//!     opens, and it exports none of those nine, which is exactly the situation
-//!     `MissingSymbol` exists for.
-//!   * a path under a directory that does not exist, for `OpenFailed`. That one
-//!     needs no configuration, because no machine has that directory.
-//!
-//! Nothing is skipped when a variable is missing. In a runtime-loading build a
-//! test that cannot name a provider has nothing to say, and passing anyway
-//! would mean nothing at all.
-//!
-//! The complete lifecycle is one test because success cannot be reset. Test
-//! filtering and execution order cannot separate a prerequisite from its checks.
-
 const std = @import("std");
 const blake3 = @import("blake3");
 const testing = std.testing;
@@ -43,43 +12,24 @@ comptime {
         );
     }
 }
-
-/// A shared object exporting the nine entry points of `c/blake3.h`.
 const provider_variable = "BLAKE3_TEST_PROVIDER";
-/// A loadable object that is not BLAKE3: it opens, and exports none of them.
 const alien_variable = "BLAKE3_TEST_ALIEN";
 
-/// Upstream's official vectors, embedded at compile time and read the same way
-/// `tests.zig` reads them. The answers here are not derived by running the
-/// library: they are what upstream published for these inputs.
+/// Upstream's official vectors are embedded at compile time.
 const vectors_json = @import("runtime_fixtures").vectors_json;
 
-/// No machine has this directory, which is what makes it a real `OpenFailed`
-/// rather than a guess about what might be missing.
+/// Upstream's vectors use a repeating 251-byte input pattern.
 const absent_path = "/blake3-no-such-directory/libblake3.so";
-
-/// The pattern every published input is filled with, from the file's own
-/// `_comment`: "a repeating sequence of 251 bytes: 0, 1, 2, ..., 249, 250,
-/// 0, 1, ...".
 const input_pattern_len = 251;
 
-/// What a thread stores when it comes back from a load.
 const Outcome = blake3.LoadError!void;
 
-/// What can be wrong with this file's own expectations.
 const Problem = error{
-    /// The loader was ready but reported no request, which the contract says
-    /// cannot happen.
     NoRetainedRequest,
-    /// Upstream's vector file did not have the shape these tests read.
     UnexpectedFixtureShape,
 };
 
-/// Copy an environment variable into `buffer`, or return null when it is unset.
-///
-/// The value is copied rather than returned as a slice into the environment,
-/// because the loader compares a request against its own retained copy and a
-/// caller may hand it any bytes it likes.
+/// Copies an environment value; returns null when it is unset or too long.
 fn envCopy(buffer: []u8, key: []const u8) ?[]const u8 {
     const value = std.testing.environ.getAlloc(std.testing.allocator, key) catch return null;
     defer std.testing.allocator.free(value);
@@ -104,7 +54,6 @@ fn alienPath(buffer: []u8) []const u8 {
     );
 }
 
-/// One thread's whole job: load one path and store what came back.
 fn contendOn(path: []const u8, outcome: *Outcome) void {
     outcome.* = blake3.load(.{ .path = path });
 }
@@ -180,17 +129,11 @@ test "failure, explicit retry, concurrent publication and retained provider" {
 
 const PublishedCase = struct {
     input_len: usize,
-    /// The 32-byte unkeyed digest as 64 lowercase hexadecimal characters. The
-    /// file publishes a 131-byte extended output; its first 32 bytes are the
-    /// digest `hash` produces.
+    /// First 32 bytes of upstream's extended output, as lowercase hexadecimal.
     digest_hex: []u8,
 };
 
-/// Read the two shortest published cases out of upstream's vector file.
-///
-/// The inputs are not in the file, only their lengths: they are all the same
-/// pattern, stated in the file's own `_comment`. Taking the two shortest keeps
-/// the test about the loader rather than about hashing.
+/// Reads the two shortest published vectors; their input bytes follow upstream's repeating pattern.
 fn publishedCases(gpa: std.mem.Allocator) ![]PublishedCase {
     const parsed = try std.json.parseFromSlice(std.json.Value, gpa, vectors_json, .{});
     defer parsed.deinit();

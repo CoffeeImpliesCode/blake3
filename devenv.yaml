@@ -1,15 +1,6 @@
 # SPDX-License-Identifier: CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception
 #
-# Canonical input declaration for this SDK's devenv shell.
-#
-# The revision is pinned here rather than left floating on `rolling`, so that a
-# shell entered from a clean checkout resolves the same nixpkgs without reading
-# devenv.lock. The lock file itself is the driver's to generate and commit:
-# `devenv.lock` is deliberately absent from this working copy.
-#
-# The pinned revision is the one the workspace's other devenv projects resolve
-# to today (observed in a sibling's devenv.lock). Nothing here was evaluated,
-# built or run to produce this file.
+# Pin nixpkgs to a fixed revision rather than a floating channel.
 inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737

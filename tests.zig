@@ -1,46 +1,13 @@
-//! Behavioural tests for the BLAKE3 facade.
-//!
-//! Every expected value in this file is read out of upstream's published test
-//! vectors, `test_vectors/test_vectors.json`, embedded below with
-//! `@embedFile`. Nothing here re-derives an answer by running the library and
-//! calling the result correct, and nothing pins a version, an export, or a
-//! default: each test asks a question about observable behaviour and compares
-//! it with the file upstream publishes for exactly that input.
-//!
-//! ## The fixture
-//!
-//! The file gives an input length and three outputs per case, one per mode,
-//! and each output is a 131-byte extended output in hexadecimal. It does not
-//! carry the inputs themselves, because they are all the same pattern: byte
-//! `i` of every input is `i mod 251`, stated in the file's own `_comment`
-//! field. So the input is generated here and the answer comes from the file.
-//!
-//! That is the point of embedding the file rather than pasting a handful of
-//! digests into the source: 35 cases spanning 0 to 102400 bytes, each crossing
-//! block and chunk boundaries, are exercised, and the file is the upstream
-//! artifact those answers came from.
+//! Tests the BLAKE3 facade against upstream's published vectors.
 
 const std = @import("std");
 const blake3 = @import("blake3");
 const testing = std.testing;
 
-/// A shared object exporting the nine entry points of `c/blake3.h`, named by
-/// the environment in a runtime-loading build.
+/// Name of the shared-library environment variable for runtime-loading tests.
 const provider_variable = "BLAKE3_TEST_PROVIDER";
 
-/// Make the native library usable, once, before a test calls the facade.
-///
-/// In a linked build the facade is usable already and this is a no-op at
-/// comptime. In a runtime-loading build every call into the module goes through
-/// a table that `load` fills, so this is where the one explicit load happens.
-/// It is safe to call from every test: the contract makes the same request
-/// idempotent, and the loader keeps the handle to the end of the process.
-///
-/// A build that was not told which file to load stops here with the variable's
-/// name, rather than reporting a test failure that says nothing about the
-/// reason. A suite that quietly stopped testing because a variable was unset
-/// would report success for nothing, and one that failed anonymously would send
-/// the next person looking in the loader instead of at the command line.
+/// Loads the configured provider once in runtime-loaded tests; missing configuration panics.
 fn nativeReady() void {
     if (comptime !blake3.runtime_loaded) return;
     if (blake3.loadedSource() != null) return;
@@ -72,17 +39,14 @@ fn missingProvider() noreturn {
     );
 }
 
-/// Upstream's official vectors, embedded at compile time.
 const vectors_json = @embedFile("test_vectors/test_vectors.json");
 
-/// The pattern every published input is filled with, from the file's own
-/// `_comment`: "a repeating sequence of 251 bytes: 0, 1, 2, ..., 249, 250,
-/// 0, 1, ...".
+/// Period of the upstream vector input pattern.
 const input_pattern_len = 251;
 
 const Case = struct {
     input_len: usize,
-    /// Hexadecimal, lowercase, complete 131-byte extended output.
+    /// Full extended output as lowercase hex.
     hash: []const u8,
     keyed_hash: []const u8,
     derive_key: []const u8,
@@ -94,8 +58,7 @@ const Fixture = struct {
     key: blake3.Key,
     context: []const u8,
     cases: []Case,
-    /// The extended output length the file publishes, in bytes. Taken from the
-    /// file rather than written down here.
+    /// Extended output length in bytes, read from the fixture.
     xof_len: usize,
     max_input_len: usize,
 
@@ -104,10 +67,9 @@ const Fixture = struct {
     }
 };
 
-/// The fixture is the input to every test, so a shape this suite cannot use
-/// is an error, not an empty loop that would pass without hashing anything.
-const ShapeError = error{UnexpectedFixtureShape};
+/// Fixture shape errors abort tests instead of producing empty loops.
 
+const ShapeError = error{UnexpectedFixtureShape};
 fn objectField(obj: std.json.ObjectMap, name: []const u8) !std.json.Value {
     return obj.get(name) orelse ShapeError.UnexpectedFixtureShape;
 }
@@ -136,9 +98,7 @@ fn load(allocator: std.mem.Allocator) !Fixture {
         else => return ShapeError.UnexpectedFixtureShape,
     };
 
-    // `key` and `context_string` are the literal bytes upstream used, not hex:
-    // the key is the 32-character ASCII string "whats the Elvish word for
-    // friend", which is exactly one key long.
+    // Fixture `key` and `context_string` fields contain literal bytes, not hex.
     const key_text = try stringField(root, "key");
     if (key_text.len != blake3.key_len) return ShapeError.UnexpectedFixtureShape;
     var key: blake3.Key = undefined;
@@ -164,10 +124,7 @@ fn load(allocator: std.mem.Allocator) !Fixture {
             .keyed_hash = try stringField(obj, "keyed_hash"),
             .derive_key = try stringField(obj, "derive_key"),
         };
-        // Every case carries a complete extended output of the same length in
-        // all three modes. Comparing against the whole thing is the claim the
-        // tests below make, so a case that carried less would silently weaken
-        // them rather than fail.
+        // Enforce one output length across modes and cases.
         if (out.hash.len % 2 != 0) return ShapeError.UnexpectedFixtureShape;
         if (out.keyed_hash.len != out.hash.len) return ShapeError.UnexpectedFixtureShape;
         if (out.derive_key.len != out.hash.len) return ShapeError.UnexpectedFixtureShape;
@@ -186,13 +143,12 @@ fn load(allocator: std.mem.Allocator) !Fixture {
     };
 }
 
-/// Fill a buffer with the pattern upstream's inputs use.
+/// Fills an input with the upstream vector pattern.
 fn fillInput(buffer: []u8) void {
     for (buffer, 0..) |*byte, i| byte.* = @truncate(i % input_pattern_len);
 }
 
-/// Compare `digest` with the front of `expected_hex`, printing both sides and
-/// naming the case and the mode when they disagree.
+/// Compares a digest with the fixture and reports the case and mode on mismatch.
 fn expectCaseDigest(case: Case, mode: []const u8, digest: []const u8, expected_hex: []const u8) !void {
     if (expected_hex.len < 2 * digest.len) return ShapeError.UnexpectedFixtureShape;
     const window = expected_hex[0 .. 2 * digest.len];
@@ -207,11 +163,9 @@ fn expectCaseDigest(case: Case, mode: []const u8, digest: []const u8, expected_h
     }
 }
 
-/// Feed `message` to one unkeyed hasher in `step`-sized pieces.
 fn expectSplitDigest(case: Case, message: []const u8, step: usize) !void {
     var hasher = blake3.init();
-    // An empty update is a documented no-op, so it must not perturb the
-    // digest of what follows.
+    // Empty updates must not change the digest.
     blake3.update(&hasher, message[0..0]);
     var offset: usize = 0;
     while (offset < message.len) {
@@ -287,10 +241,7 @@ test "streaming is invariant to how the input is split at block and chunk bounda
     const input = try testing.allocator.alloc(u8, fixture.max_input_len);
     defer testing.allocator.free(input);
 
-    // `block_len` is 64 and `chunk_len` is 1024, and the boundaries that
-    // matter are the ones where upstream either compresses a block or starts a
-    // chunk and pushes a chaining value. One byte at a time never fills a
-    // block by accident; 1023 and 1025 straddle a chunk in both directions.
+    // Cover offsets around 64-byte blocks and 1024-byte chunks.
     const steps = [_]usize{
         1,
         blake3.block_len - 1,
@@ -317,10 +268,7 @@ test "finalizeSeek reads the published extended output at an offset" {
     const input = try testing.allocator.alloc(u8, fixture.max_input_len);
     defer testing.allocator.free(input);
 
-    // Offsets chosen for the three paths upstream takes in `output_root_bytes`:
-    // one byte into the first 64-byte block, the middle of it, the default
-    // output length, the first block boundary, and the last three bytes of the
-    // published window.
+    // Cover positions within the first block, at its boundary, and near the output end.
     const seeks = [_]u64{ 1, 32, blake3.out_len, blake3.block_len, fixture.xof_len - 3 };
 
     for (fixture.cases) |case| {
@@ -356,9 +304,7 @@ test "reset restores the initial state and keeps the mode" {
     const input = try testing.allocator.alloc(u8, fixture.max_input_len);
     defer testing.allocator.free(input);
 
-    // Input fed before the reset, which must leave no trace: not in the bytes
-    // already buffered, and not in the chaining values of chunks already
-    // pushed onto the stack.
+    // Cross chunk boundaries before reset to exercise buffered bytes and stacked chaining values.
     const poison = [_]u8{0xa5} ** (2 * blake3.chunk_len + 1);
 
     for (fixture.cases) |case| {
@@ -373,8 +319,7 @@ test "reset restores the initial state and keeps the mode" {
         blake3.finalize(&hasher, &digest);
         try expectCaseDigest(case, "reset unkeyed", &digest, case.hash);
 
-        // A keyed hasher that forgets its key on reset would answer with the
-        // unkeyed digest here, which is a different published string.
+        // Reset must preserve keyed mode.
         var keyed = blake3.initKeyed(fixture.key);
         blake3.update(&keyed, &poison);
         blake3.reset(&keyed);
@@ -390,9 +335,6 @@ test "reset restores the initial state and keeps the mode" {
         try expectCaseDigest(case, "reset derive-key", &digest, case.derive_key);
     }
 
-    // A reset hasher fed nothing after the reset is the empty input again, in
-    // its own mode. The empty case's published digests are the oracle for that,
-    // and they differ per mode, so this also says the mode survived.
     var digest: blake3.Out = undefined;
 
     var plain = blake3.init();
@@ -422,14 +364,9 @@ test "derive-key context is hashed by length, not up to a NUL" {
     var digest: blake3.Out = undefined;
     var window: blake3.Out = undefined;
 
-    // The published context contains no NUL, so the length-taking entry point
-    // and upstream's `const char *` entry point must derive the same key. This
-    // is what makes the difference below a difference in length handling and
-    // nothing else. The C call also goes through `blake3.c`, the raw escape
-    // hatch, which is part of the published surface.
+    // A NUL-free context must agree through the length-taking and C-string APIs.
     blake3.deriveKey(fixture.context, "", &digest);
 
-    // The context with a NUL appended, which is what a C string would stop at.
     const terminated = try testing.allocator.alloc(u8, fixture.context.len + 1);
     defer testing.allocator.free(terminated);
     @memcpy(terminated[0..fixture.context.len], fixture.context);
@@ -444,10 +381,7 @@ test "derive-key context is hashed by length, not up to a NUL" {
         return error.ContextLengthMismatch;
     }
 
-    // A context with a NUL in the middle, and the same context with one byte
-    // appended after a NUL, must each derive something other than their
-    // truncation at that NUL. A wrapper that passed the context as a C string
-    // would answer with the truncation and fail here.
+    // Embedded NUL bytes must remain part of the context.
     const with_embedded_nul = "BLAKE3 facade\x00 2026-10-01 derive key";
     var prefix_digest: blake3.Out = undefined;
     blake3.deriveKey(with_embedded_nul[0.."BLAKE3 facade".len], "", &prefix_digest);
@@ -457,8 +391,7 @@ test "derive-key context is hashed by length, not up to a NUL" {
     blake3.deriveKey(terminated, "", &window);
     if (std.mem.eql(u8, &digest, &window)) return error.ContextTruncatedAtNul;
 
-    // And the two distinct NUL-bearing contexts are distinct from each other,
-    // so length is being used as data rather than as a switch.
+    // Distinct NUL-bearing contexts must produce distinct keys.
     blake3.deriveKey(with_embedded_nul, "", &digest);
     blake3.deriveKey(terminated, "", &window);
     if (std.mem.eql(u8, &digest, &window)) return error.ContextsCollapsed;

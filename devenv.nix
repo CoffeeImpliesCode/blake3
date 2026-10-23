@@ -1,64 +1,24 @@
 # SPDX-License-Identifier: CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception
 #
-# Canonical development shell. Three properties matter:
-#
-#   * packages holds tools only. The SDK package is not a shell input, so
-#     entering the shell never builds it.
-#   * outputs.static and outputs.shared are lazy: `devenv build outputs.static`
-#     and `devenv build outputs.shared` call the same package.nix the flake
-#     calls. That is the packaging route, not an echoing script.
-#   * every task body starts from this module's own directory and keeps what it
-#     generates under the external cache the caller named. devenv runs a task
-#     with the caller's working directory, and that directory is not this SDK:
-#     it holds `devenv.lock` and `.devenv/` and none of `build.zig`.
-#
-# Nothing here hard-codes a host path or reads the environment at eval time.
-# Not evaluated or entered by its author; README.md's rows are
-# PENDING-VERIFICATION until the driver runs them.
 { pkgs, lib, config, inputs, ... }:
 
 let
-  # nixpkgs derives this attribute name from "0.16.0". The assertion below stops
-  # a nixpkgs bump from silently moving this SDK onto another compiler.
+  # Select Zig 0.16; the assertion below checks the resolved version.
   zig = pkgs.zig_0_16;
 
   mk = linkage: pkgs.callPackage ./package.nix {
     inherit zig linkage;
   };
 
-  # This module's own directory, and the shell-quoted form every body below
-  # starts from.
-  #
-  # `./.` in an expression is relative to the file that contains it, so this is
-  # the SDK root however devenv was invoked. It is `builtins.toString` and not
-  # `"${./.}"` deliberately: interpolating a path copies it into the read-only
-  # Nix store, which here would be a second, frozen copy of the whole SDK
-  # rather than the working tree an integrity record, an edit and the consumer's
-  # own path dependency are about.
+  # Use a string path so Nix does not copy the working tree into its store.
   sdkRoot = builtins.toString ./.;
   sdkRootArg = lib.escapeShellArg sdkRoot;
 
-  # The build cache and the one install prefix live beneath `ZIG_LOCAL_CACHE_DIR`,
-  # the workspace's canonical local cache variable, so a caller's own exported
-  # value is used exactly as it stands. The global cache is named too, because a
-  # `zig build` that is given no `--global-cache-dir` resolves one of its own and
-  # this file does not know where that is. Never this repository, never a volume
-  # this file knows nothing about. The paths are assembled here, in Nix, and
-  # expanded by the shell at run time, because the location is the caller's
-  # rather than this file's.
+  # Tasks require caches outside the repository, selected from caller env or fallbacks.
   cacheDir = "$ZIG_LOCAL_CACHE_DIR/blake3";
   globalCacheDir = "$ZIG_GLOBAL_CACHE_DIR";
   installPrefix = "$ZIG_LOCAL_CACHE_DIR/blake3-prefix";
 
-  # The preamble every task below opens with: this module's own directory, then
-  # both caches, then a refusal rather than a guess. An exported
-  # `ZIG_LOCAL_CACHE_DIR` or `ZIG_GLOBAL_CACHE_DIR` is used unchanged; either
-  # missing one is filled from `XDG_CACHE_HOME`, then from `TMPDIR`. Every check
-  # is here, in the body, before the compiler is reached: `devenv tasks run
-  # --mode single <name>` does not run `enterShell`, so a task that relied on it
-  # would be silently building against this SDK's own `.zig-cache` otherwise.
-  # None of these fallbacks is a literal `/tmp`, `/var/tmp`, an NFS mount or a
-  # path inside this repository.
   preamble = ''
     set -eu
     cd ${sdkRootArg}
@@ -78,15 +38,9 @@ in
   outputs = {
     static = mk "static";
     shared = mk "dynamic";
-    # static is this SDK's native policy.
     default = mk "static";
   };
 
-  # The same fill-in at shell entry, so an interactive `zig build` and the tasks
-  # below agree about where output goes. A value the caller already exported is
-  # kept; only an unset variable is completed, and a shell that names no location
-  # at all is told so rather than handed one. Nothing here is what makes a task
-  # work: `preamble` above repeats all of it.
   enterShell = ''
     : "''${ZIG_LOCAL_CACHE_DIR:=''${XDG_CACHE_HOME:-''${TMPDIR:-}}}"
     : "''${ZIG_GLOBAL_CACHE_DIR:=''${XDG_CACHE_HOME:-''${TMPDIR:-}}}"
@@ -99,20 +53,7 @@ in
     fi
   '';
 
-  # Namespaced: devenv puts task names on one list, and a bare `build` or `test`
-  # would collide with the ordinary shell commands of the same name. Every body
-  # opens with `preamble`, so it runs in this SDK's own directory, resolves both
-  # caches there, and reaches the compiler with `-j8`, `--summary all` and both
-  # cache directories already written out rather than wherever the caller stood
-  # or whatever `zig` would have picked for itself.
-  #
-  # Only `sdk:build` carries `--prefix`. A bare `zig build` runs the install
-  # step, and `build.zig:1359,1378,1467` attach the artifact, the public header,
-  # `libblake3.pc`, the licence records and the example to it, so without a
-  # prefix that task would write `zig-out/` into this repository. `test`
-  # (`build.zig:1392`), `runtime-test` (`build.zig:1445-1465`) and `check`
-  # (`build.zig:1472-1483`) depend on no install step and install nothing, so
-  # those bodies get caches and no prefix.
+  # Every task starts from the SDK root; only sdk:build sets an install prefix.
   tasks = {
     "sdk:build" = {
       description = "zig build - compile and install under the caller's external prefix";

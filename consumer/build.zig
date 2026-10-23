@@ -1,43 +1,7 @@
 const std = @import("std");
 
-/// A package that consumes `blake3` from outside.
-///
-/// This exists to prove one thing: that a dependent needs only
-/// `dep.module("blake3")` and gets a working, correctly linked library. If the
-/// facade module stopped carrying its C artifact, or the translated header
-/// stopped matching the C source, this would stop building or stop producing
-/// the digests below, and nothing inside the library would notice.
-///
-/// Run it with `zig build run`. It exits non-zero if any digest disagrees with
-/// the answer upstream publishes for that exact input, so it is a check and
-/// not a demo.
-///
-/// The library's own four delivery axes are forwarded here rather than
-/// reinterpreted, and they are independent of one another. `-Dlinkage` names
-/// which artifact the dependency builds and installs, or in system mode which
-/// kind of *installed* library to bind to; `-Dportable` selects the scalar core
-/// instead of a dispatched SIMD kernel; `-Dsystem` selects the installed
-/// library and its installed header instead of compiling `c/` at all;
-/// `-Druntime` names how the facade reaches the library, through a link line
-/// or through the one process-lifetime table an explicit `load(source)` fills.
-/// `src/main.zig` is written for both shapes, so each of the combinations is
-/// one real program and not a compile-only configuration: under
-/// `blake3.runtime_loaded` it names a provider with `--provider <path>` or
-/// `BLAKE3_TEST_PROVIDER`, loads it once, and the same published digests
-/// follow.
-///
-/// `-Dportable` and `-Dsystem` are the two axes without which the published
-/// module cannot be exercised from outside at all: they are where the
-/// translated header, the macros and the artifact all differ from the
-/// default graph. Declaring them is also what makes `b.option` do its job —
-/// an undeclared `-D` is a configuration error rather than a flag the build
-/// system silently drops, so a caller who passed one and saw it ignored would
-/// have been told so.
-///
-/// None of the four is given a default here. A `null` user-input option is not
-/// passed on to the dependency at all (`lib/std/Build.zig:430-437`, `:569-581`),
-/// so a caller who names none gets the library's own defaults and this package
-/// keeps no second copy of them to drift away from.
+/// Verifies `dep.module("blake3")` against upstream digests in `zig build run`.
+/// Forwards linkage, portability, system and runtime options; runtime mode accepts `--provider <path>` or `BLAKE3_TEST_PROVIDER`.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -93,10 +57,7 @@ pub fn build(b: *std.Build) void {
         .runtime = runtime,
     });
 
-    // No `link_libc` here on purpose. The C requirement belongs to the library
-    // module, which carries it; a dependent states its own, and this program
-    // needs nothing beyond what the library already brings. Adding it here
-    // would hide a library that forgot to declare it.
+    // The library module declares its C requirement; do not mask a missing declaration here.
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -111,10 +72,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     const run_exe = b.addRunArtifact(exe);
-    // Forwarded so `zig build run -Druntime=true -- --provider <path>` reaches
-    // `src/main.zig`, which reads exactly that and otherwise falls through to
-    // `BLAKE3_TEST_PROVIDER`. With no arguments this is inert, so a linked run
-    // is unchanged.
+    // Forward run arguments for runtime mode; without a provider path, `main.zig` reads `BLAKE3_TEST_PROVIDER`.
     if (b.args) |args| run_exe.addArgs(args);
     const run_step = b.step("run", "Build and run the consumer program");
     run_step.dependOn(&run_exe.step);
