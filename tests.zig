@@ -68,7 +68,6 @@ const Fixture = struct {
 };
 
 /// Fixture shape errors abort tests instead of producing empty loops.
-
 const ShapeError = error{UnexpectedFixtureShape};
 fn objectField(obj: std.json.ObjectMap, name: []const u8) !std.json.Value {
     return obj.get(name) orelse ShapeError.UnexpectedFixtureShape;
