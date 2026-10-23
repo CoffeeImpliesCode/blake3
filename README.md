@@ -17,7 +17,7 @@ No upstream C source, header, assembly, example, test vector, or licence text is
 
 ## Support matrix
 
-The build targets Zig 0.16.0 Tier 1 and Tier 2 platforms.
+The build targets Zig 0.17.0 Tier 1 and Tier 2 platforms.
 
 | Target family | Default SIMD kernels |
 |---|---|
@@ -34,7 +34,7 @@ The build targets Zig 0.16.0 Tier 1 and Tier 2 platforms.
 
 ## Consumption
 
-Use Zig 0.16.0 with a C compiler and libc. Zig supplies the C compiler and libc.
+Use Zig 0.17.0 with a C compiler and libc. Zig supplies the C compiler and libc.
 
 Add the package to `build.zig.zon`:
 

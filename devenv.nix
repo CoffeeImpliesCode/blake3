@@ -3,8 +3,8 @@
 { pkgs, lib, config, inputs, ... }:
 
 let
-  # Select Zig 0.16; the assertion below checks the resolved version.
-  zig = pkgs.zig_0_16;
+  # Select Zig 0.17; the assertion below checks the resolved version.
+  zig = pkgs.zig_0_17;
 
   mk = linkage: pkgs.callPackage ./package.nix {
     inherit zig linkage;
@@ -89,8 +89,8 @@ in
 
   assertions = [
     {
-      assertion = zig.version == "0.16.0";
-      message = "This SDK targets Zig 0.16.0 (pkgs.zig_0_16); got ${zig.version}.";
+      assertion = zig.version == "0.17.0";
+      message = "This SDK targets Zig 0.17.0 (pkgs.zig_0_17); got ${zig.version}.";
     }
   ];
 }

@@ -305,7 +305,7 @@ test "reset restores the initial state and keeps the mode" {
     defer testing.allocator.free(input);
 
     // Cross chunk boundaries before reset to exercise buffered bytes and stacked chaining values.
-    const poison = [_]u8{0xa5} ** (2 * blake3.chunk_len + 1);
+    const poison: [2 * blake3.chunk_len + 1]u8 = @splat(0xa5);
 
     for (fixture.cases) |case| {
         const message = input[0..case.input_len];

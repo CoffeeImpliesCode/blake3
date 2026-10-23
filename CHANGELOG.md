@@ -2,6 +2,7 @@
 
 Fork-only changes to BLAKE3 1.8.7.
 
+- Port to Zig 0.17.0.
 - Fixed runtime dispatch generation for duplicate `__root` declarations and nested variadic calls; provider validation failures now include the refusal text.
 - Added selectable static or dynamic library linkage; static remains the default.
 - Added explicit runtime-loaded provider support with `-Druntime=true`.

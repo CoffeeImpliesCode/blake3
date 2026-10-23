@@ -40,7 +40,7 @@ const c_flags = [_][]const u8{"-std=gnu11"};
 const c_flags_shared = [_][]const u8{"-fvisibility=hidden"};
 
 /// Apply the same C flags to every library translation unit.
-fn cUnitFlags(linkage: std.builtin.LinkMode) []const []const u8 {
+fn cUnitFlags(linkage: std.lang.LinkMode) []const []const u8 {
     return if (linkage == .dynamic) &c_flags_shared_flags else &c_flags;
 }
 
@@ -161,10 +161,10 @@ fn artifact_name(
 fn add_graph(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     portable: bool,
     library: Library,
-    linkage: std.builtin.LinkMode,
+    linkage: std.lang.LinkMode,
     runtime_loaded: bool,
     public: bool,
 ) Graph {
@@ -255,8 +255,8 @@ fn add_x86_kernel(
     b: *std.Build,
     c_mod: *std.Build.Module,
     base: *const std.Target,
-    optimize: std.builtin.OptimizeMode,
-    linkage: std.builtin.LinkMode,
+    optimize: std.lang.Optimize,
+    linkage: std.lang.LinkMode,
     name: []const u8,
     kernel: X86Kernel,
 ) void {
@@ -282,9 +282,9 @@ fn add_x86_kernel(
 fn add_c_library(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     portable: bool,
-    requested: std.builtin.LinkMode,
+    requested: std.lang.LinkMode,
     name: []const u8,
 ) *std.Build.Step.Compile {
     const linkage = deliveredLinkage(target, requested);
@@ -350,10 +350,10 @@ fn add_target_check(
     b: *std.Build,
     step: *std.Build.Step,
     query: std.Target.Query,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     portable: bool,
     library: Library,
-    linkage: std.builtin.LinkMode,
+    linkage: std.lang.LinkMode,
     runtime_loaded: bool,
 ) void {
     const cross_target = b.resolveTargetQuery(query);
@@ -398,7 +398,7 @@ fn add_target_check(
 fn add_example(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     module: *std.Build.Module,
     name: []const u8,
 ) *std.Build.Step.Compile {
@@ -418,7 +418,7 @@ fn add_example(
 fn add_tests(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     module: *std.Build.Module,
     name: []const u8,
 ) *std.Build.Step.Compile {
@@ -434,7 +434,7 @@ fn add_tests(
 
 /// Generate upstream's pkg-config metadata with a relocatable prefix.
 /// Shared builds add the Windows DLL import macro to Cflags (c/CMakeLists.txt:139-145).
-fn add_pkg_config(b: *std.Build, linkage: std.builtin.LinkMode) void {
+fn add_pkg_config(b: *std.Build, linkage: std.lang.LinkMode) void {
     const files = b.addWriteFiles();
     const install = b.addInstallFileWithDir(
         files.add("libblake3.pc", b.fmt(
@@ -487,7 +487,7 @@ fn addMisuseRuns(b: *std.Build, misuse: *std.Build.Step.Compile, provider: std.B
     const run = b.addRunArtifact(misuse);
     run.addArgs(&.{"after-load"});
     // Step.Run accepts the provider as a LazyPath argument, not an environment value.
-    run.addPrefixedFileArg("", provider);
+    run.addFileArg2(provider, .{});
     run.expectExitCode(0);
     step.dependOn(&run.step);
 }
@@ -519,7 +519,7 @@ pub fn build(b: *std.Build) void {
     const library: Library = if (use_system) .system else .bundled;
 
     const linkage_option = b.option(
-        std.builtin.LinkMode,
+        std.lang.LinkMode,
         "linkage",
         "Deliver the native library as a static archive (the default, and " ++
             "what this package has always produced) or as a real shared " ++
@@ -531,7 +531,7 @@ pub fn build(b: *std.Build) void {
     );
 
     // Preserve each mode's default: static when bundled, dynamic when system-linked.
-    const linkage: std.builtin.LinkMode = linkage_option orelse
+    const linkage: std.lang.LinkMode = linkage_option orelse
         (if (library == .system) .dynamic else .static);
 
     // Runtime loading controls dispatch; linkage controls artifact delivery.
@@ -566,7 +566,7 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&example.step);
 
     const run_example = b.addRunArtifact(example);
-    if (b.args) |args| run_example.addArgs(args);
+    run_example.addPassthruArgs();
     b.step("smoke", "Run the deterministic example program").dependOn(&run_example.step);
 
     // Keep tests.zig as the root so Zig discovers its test blocks.
@@ -605,7 +605,7 @@ pub fn build(b: *std.Build) void {
         runtime_fixtures.addOption([]const u8, "vectors_json", @embedFile("test_vectors/test_vectors.json"));
         load_tests.root_module.addOptions("runtime_fixtures", runtime_fixtures);
         const run_tests = b.addRunArtifact(load_tests);
-        run_tests.setCwd(.{ .cwd_relative = b.cache_root.path orelse "." });
+        run_tests.setCwd(std.Build.LazyPath.cache_root);
         const runtime_step = b.step("runtime-test", "Run loader lifecycle tests; requires explicit BLAKE3_TEST_PROVIDER and BLAKE3_TEST_ALIEN");
         runtime_step.dependOn(&run_tests.step);
 
@@ -625,7 +625,7 @@ pub fn build(b: *std.Build) void {
             }),
         });
         const run_core_tests = b.addRunArtifact(core_tests);
-        run_core_tests.setCwd(.{ .cwd_relative = b.cache_root.path orelse "." });
+        run_core_tests.setCwd(std.Build.LazyPath.cache_root);
         runtime_step.dependOn(&run_core_tests.step);
     }
     b.getInstallStep().dependOn(&misuse.step);
@@ -675,8 +675,8 @@ fn targetHasDynamicLinker(target: std.Build.ResolvedTarget) bool {
 /// Refuse unsupported shared delivery; never substitute a static archive.
 fn deliveredLinkage(
     target: std.Build.ResolvedTarget,
-    requested: std.builtin.LinkMode,
-) std.builtin.LinkMode {
+    requested: std.lang.LinkMode,
+) std.lang.LinkMode {
     if (requested == .dynamic and !targetHasDynamicLinker(target)) {
         std.debug.panic(
             "blake3: shared delivery is unsupported for {s}; no static substitution. Use -Dlinkage=static.",

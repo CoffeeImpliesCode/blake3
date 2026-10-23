@@ -64,7 +64,7 @@ const Step = struct {
 };
 
 const max_steps = 4;
-const no_steps = [_]Step{.{}} ** max_steps;
+const no_steps: [max_steps]Step = @splat(.{});
 
 /// Fills unspecified attempts with defaults; panics if the script exceeds `max_steps`.
 fn script(entries: []const Step) [max_steps]Step {
@@ -86,7 +86,7 @@ const arrangement_budget: Io.Timeout = .{
 /// Test-only counter on the production wait path; fixtures use it to await attachment without polling.
 const WaitCounter = struct {
     index: std.atomic.Value(usize) = .init(0),
-    slots: [max_attachers]Io.Event = [_]Io.Event{.unset} ** max_attachers,
+    slots: [max_attachers]Io.Event = @splat(.unset),
 
     fn note(self: *WaitCounter, io: Io) void {
         const at = self.index.fetchAdd(1, .acq_rel);
@@ -358,7 +358,7 @@ fn expectPublished(comptime Case: type, path: []const u8) !void {
     );
 }
 
-const route = switch (builtin.os.tag) {
+const route = switch (builtin.target.os.tag) {
     .linux => .proc_maps,
     // The list of images dyld has loaded for this process.
     .macos, .ios, .tvos, .watchos, .visionos => .dyld_images,
@@ -381,7 +381,7 @@ fn reportUnobserved(what: []const u8, path: []const u8) void {
         "runtime/core_tests.zig: {s} was not observed for {s} on {s}: this target has a " ++
             "dynamic loader and no route here that can ask. The readiness and request " ++
             "assertions still ran.\n",
-        .{ what, path, @tagName(builtin.os.tag) },
+        .{ what, path, @tagName(builtin.target.os.tag) },
     );
 }
 

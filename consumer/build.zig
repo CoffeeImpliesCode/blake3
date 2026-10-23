@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const linkage = b.option(
-        std.builtin.LinkMode,
+        std.lang.LinkMode,
         "linkage",
         "Which delivery of libblake3 the dependency builds: a static archive or " ++
             "a real shared object carrying upstream's soname. In system mode " ++
@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
 
     const run_exe = b.addRunArtifact(exe);
     // Forward run arguments for runtime mode; without a provider path, `main.zig` reads `BLAKE3_TEST_PROVIDER`.
-    if (b.args) |args| run_exe.addArgs(args);
+    run_exe.addPassthruArgs();
     const run_step = b.step("run", "Build and run the consumer program");
     run_step.dependOn(&run_exe.step);
 }
