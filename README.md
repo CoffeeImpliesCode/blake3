@@ -30,7 +30,9 @@ The build targets Zig 0.17.0 Tier 1 and Tier 2 platforms.
 | ELF | `libblake3.so.0.1.8`, soname `libblake3.so.0`, and `libblake3.so` symlink |
 | Darwin | `libblake3.0.dylib` and `libblake3.dylib` symlink |
 | Windows | `blake3.dll` and `blake3.lib` |
-| WASI | A dynamic request resolves to static delivery |
+| WASI | Static only; an explicit dynamic-linkage request fails |
+
+`zig build check` compiles the six-target matrix without running it. Dynamic and runtime modes exclude targets without a dynamic loader. System mode checks only the requested target and requires its installed library and header.
 
 ## Consumption
 
@@ -58,7 +60,7 @@ The native artifact is `dep.artifact("blake3")` in bundled mode. The translated 
 | `-Dlinkage=static` | Static archive; default in bundled mode |
 | `-Dlinkage=dynamic` | Shared library |
 | `-Dportable=true` | Portable scalar core without SIMD kernels |
-| `-Dsystem=true` | Use an installed `libblake3` and its `blake3.h`; this package builds and installs no library. Linkage defaults to dynamic in this mode. |
+| `-Dsystem=true` | Use an installed `libblake3` and its `blake3.h`; this package builds and installs no library. Requires pkg-config package `libblake3` (`libblake3.pc`). Linkage defaults to dynamic in this mode. |
 | `-Druntime=true` | Keep the library out of the Zig module and load a named provider at run time; the package still builds and installs its library. |
 
 See `README.zig.md` for the facade and runtime-loader API.

@@ -30,7 +30,7 @@
 - The x86 build uses upstream's C intrinsics kernels instead of its assembly kernels. Each kernel is a separate object targeting only its ISA; Zig's resolved target features replace upstream's `-m` flags. The core and dispatcher keep the requested baseline for runtime CPU dispatch.
 - AArch64 builds use upstream's NEON kernel. `-Dportable=true` sets upstream's no-SIMD macros and builds the scalar core on any target.
 - C translation units use `gnu11` to retain the C11 atomics path. Shared builds add `-fvisibility=hidden`; static builds omit it because visibility does not affect an archive.
-- `-Dsystem=true` links the installed library and translates its installed header through `libblake3.pc`; this mode compiles and installs no artifact from the package.
+- `-Dsystem=true` links the installed library and translates its installed header through `libblake3.pc`; this mode compiles and installs no artifact from the package. Both lookups use pkg-config package `libblake3`; its `Libs` field supplies `-lblake3`.
 - `-Druntime=true` generates dispatch from the selected translated header and leaves the facade unlinked. Consumers load an explicit provider; there is no path-to-system fallback. Runtime and system modes can combine.
 - `-Dlinkage` selects static or shared delivery; static is the default. The build installs the library, public header, pkg-config file and licence records, but not the example.
 - The package does not build or ship the upstream Rust crate, `b3sum`, benches, tools or media; those files remain in the repository for upstream provenance.

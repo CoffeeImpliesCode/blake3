@@ -9,6 +9,7 @@ const manifest_version = std.SemanticVersion.parse(manifest.version) catch
     @panic("build.zig.zon: .version is not a semantic version");
 
 const lib_name = "blake3";
+const pkg_config_name = "libblake3";
 const facade_source = "zig/root.zig";
 
 const translate_header = "zig/translate.h";
@@ -192,7 +193,7 @@ fn add_graph(
     } else {
         // Use pkg-config for both the installed header and library; mismatched headers can describe a different ABI.
         // Runtime dispatch is generated from this translation too.
-        translate.linkSystemLibrary(lib_name, .{
+        translate.linkSystemLibrary(pkg_config_name, .{
             .use_pkg_config = .force,
             .preferred_link_mode = linkage,
         });
@@ -224,7 +225,7 @@ fn add_graph(
             module.linkLibrary(lib);
         } else {
             // Require pkg-config so the linked library matches the translated header.
-            module.linkSystemLibrary(lib_name, .{
+            module.linkSystemLibrary(pkg_config_name, .{
                 .use_pkg_config = .force,
                 .preferred_link_mode = linkage,
             });
@@ -632,13 +633,16 @@ pub fn build(b: *std.Build) void {
 
     const check_step = b.step(
         "check",
-        "Compile the C core, the facade, the tests and the example for the " ++
-            "six-target matrix without running any of them",
+        "Compile the C core, facade, tests and example for supported matrix " ++
+            "targets, or the requested target in system mode, without running them",
     );
-    if (!target.query.isNative()) {
+    if (library == .system or !target.query.isNative()) {
         add_target_check(b, check_step, target.query, optimize, portable, library, linkage, runtime_loaded);
     } else {
         for (check_targets) |query| {
+            const check_target = b.resolveTargetQuery(query);
+            if ((linkage == .dynamic or runtime_loaded) and !targetHasDynamicLinker(check_target))
+                continue;
             add_target_check(b, check_step, query, optimize, portable, library, linkage, runtime_loaded);
         }
     }

@@ -1,5 +1,7 @@
 # Changelog
 
+- Fix system header and library lookup through `libblake3.pc`; filter unsupported dynamic/runtime check targets and check only the requested target in system mode.
+
 Fork-only changes to BLAKE3 1.8.7.
 
 - Port to Zig 0.17.0.
