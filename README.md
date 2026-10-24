@@ -40,10 +40,8 @@ Use Zig 0.17.0 with a C compiler and libc. Zig supplies the C compiler and libc.
 
 Add the package to `build.zig.zon`:
 
-```zig
-.dependencies = .{
-    .blake3 = .{ .path = "../blake3" },
-},
+```sh
+zig fetch --save git+https://github.com/CoffeeImpliesCode/blake3#v1.8.7
 ```
 
 Import the `blake3` module from `build.zig`:
